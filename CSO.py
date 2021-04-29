@@ -1,6 +1,4 @@
-
 import numpy as np
-from Problem import Problem
 
 
 class CSO:
@@ -109,8 +107,8 @@ class CSO:
                             r1 = np.random.rand(dim)
                             r2 = np.random.rand(dim)
                             x_ave = np.average(pop_positions[neighbors[learn_idx]], axis=0)
-                            vel = r1 * pop_vels[learn_idx] + r2 * (pop_positions[master_idx] - pop_positions[learn_idx])\
-                                  + self.phi * (x_ave - pop_positions[learn_idx])
+                            vel = r1 * pop_vels[learn_idx] + r2 * (pop_positions[master_idx] - pop_positions[learn_idx]
+                                                                   ) + self.phi * (x_ave - pop_positions[learn_idx])
                             new_pos = pop_positions[learn_idx] + vel
                             new_pos[new_pos > self.max_pos] = self.max_pos
                             new_pos[new_pos < self.min_pos] = self.min_pos
@@ -206,16 +204,3 @@ class CSO:
                                                                            ', '.join(['%d' % ele for ele in best_subset]))
 
         return best_sol, evolutionary_process
-
-
-if __name__ == '__main__':
-    np.random.seed(1617 * 1)
-    dim = 1000
-    pop_size = 500
-    phi = 0.1
-    prob = Problem.ShiftedGriewank(dim=dim)
-    cso = CSO(problem=prob, pop_size=pop_size, max_evaluations=5000 * dim,
-              phi=phi, topology='global', max_pos=600, min_pos=-600)
-    final_sol = cso.evolve()
-    print('Final fitness: %f' % (prob.fitness(final_sol)))
-    print('Solution:' + ', '.join([str(ele) for ele in final_sol]))
