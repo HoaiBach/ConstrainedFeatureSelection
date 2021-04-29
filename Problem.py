@@ -92,7 +92,7 @@ class FeatureSelection(Problem):
     def fitness(self, sol):
         selected_features, unselected_features = self.position_2_solution(sol)
         if len(selected_features) == 0:
-            return self.worst_fitness(), None
+            return self.worst_fitness()
 
         # error rate using K-fold
         error = 0.0

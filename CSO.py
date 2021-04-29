@@ -21,49 +21,24 @@ class CSO:
 
     def evaluate_pop(self, pop):
         """
-        Evaluate the pop of individuals, return the corresponding fitness and the new pop if refine is True
+        Evaluate the pop of individuals, return the corresponding fitness
         :param pop:
         :return:
         """
         if self.parallel:
-            results = self.problem.fitness_parallel(pop)
+            fits = self.problem.fitness_parallel(pop)
         else:
-            results = [self.problem.fitness(ind) for ind in pop]
-
-        cand_pop = []
-        cand_indices_from_pop = []
-        pop_fit = []
-        for idx, (ind_fit, to_remove) in enumerate(results):
-            pop_fit.append(ind_fit)
-            if (not (to_remove is None)) and len(to_remove) > 0:
-                cand = np.copy(pop[idx])
-                cand[to_remove] = 0.0
-                cand_pop.append(cand)
-                cand_indices_from_pop.append(idx)
-
-        # evaluate the new candidate pop
-        if self.parallel:
-            cand_results = self.problem.fitness_parallel(cand_pop)
-        else:
-            cand_results = [self.problem.fitness(ind) for ind in cand_pop]
-
-        # cand ind replaces the current ind if its performance is not worse
-        for idx, (cand_fit, _), cand_pos in zip(cand_indices_from_pop, cand_results, cand_pop):
-            if not self.problem.is_better(pop_fit[idx], cand_fit):
-                pop_fit[idx] = cand_fit
-                pop[idx] = cand_pos
-
-        return np.array(pop), np.array(pop_fit), len(pop) + len(cand_pop)
+            fits = [self.problem.fitness(ind) for ind in pop]
+        return fits
 
     def evolve(self):
         # Init the population
         dim = self.problem.dim
-        # pop_positions = self.min_pos + np.random.rand(self.pop_size, dim) * (self.max_pos-self.min_pos)
         pop_positions = self.problem.init_pop(self.pop_size)
         pop_vels = np.zeros((self.pop_size, dim))
-        pop_positions, pop_fit, used_evaluations = self.evaluate_pop(pop_positions)
+        pop_fit = self.evaluate_pop(pop_positions)
 
-        no_evaluations = used_evaluations
+        no_evaluations = len(pop_positions)
         evolutionary_process = ''
 
         if self.topology == 'global':
@@ -179,10 +154,10 @@ class CSO:
             assert len(next_pop) == len(pop_positions)
             next_pop = np.array(next_pop)
 
-            next_pop[to_evaluate], eval_fits, used_evaluations = self.evaluate_pop(next_pop[to_evaluate])
+            eval_fits = self.evaluate_pop(next_pop[to_evaluate])
             for idx, fit in zip(to_evaluate, eval_fits):
                 next_pop_fitness[idx] = fit
-            no_evaluations += used_evaluations
+            no_evaluations += len(to_evaluate)
 
             pop_positions = np.array(next_pop)
             pop_fit = np.array(next_pop_fitness)
@@ -197,10 +172,11 @@ class CSO:
             if no_evaluations >= milestone:
                 milestone += self.pop_size
                 best_subset = self.problem.position_2_solution(best_sol)[0]
-                f_weight = self.problem.evaluator.f_weight
-                fRate = len(best_subset)/len(best_sol)
-                eRate = (best_fit-f_weight*fRate)/(1-f_weight)
+                f_weight = self.problem.f_weight
+                fRate = len(best_subset) / len(best_sol)
+                eRate = (best_fit - f_weight * fRate) / (1 - f_weight)
                 evolutionary_process += 'At %d: %.4f, %.4f, %.2f ~%s\n' % (no_evaluations, best_fit, eRate, fRate,
-                                                                           ', '.join(['%d' % ele for ele in best_subset]))
+                                                                           ', '.join(
+                                                                               ['%d' % ele for ele in best_subset]))
 
         return best_sol, evolutionary_process
