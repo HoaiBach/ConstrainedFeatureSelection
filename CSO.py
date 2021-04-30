@@ -63,6 +63,7 @@ class CSO:
             next_pop_fitness = []
             next_vels = []
             to_evaluate = []
+            no_infeasible = 0
 
             indices_pool = np.arange(self.pop_size)
             np.random.shuffle(indices_pool)
@@ -73,6 +74,10 @@ class CSO:
                 feasible_indices = np.where(pop_fit != float('inf'))[0]
 
             for idx1, idx2 in zip(indices_pool[0::2], indices_pool[1::2]):
+                if pop_fit[idx1] == float('inf'):
+                    no_infeasible += 1
+                if pop_fit[idx2] == float('inf'):
+                    no_infeasible += 1
                 if WorldPara.PENALISE_WORSE_THAN_FULL:
                     # contrasting 2 random individuals
                     if pop_fit[idx1] == pop_fit[idx2] == float('inf') and len(feasible_indices) > 0:
@@ -178,5 +183,7 @@ class CSO:
                 evolutionary_process += 'At %d: %.4f, %.4f, %.2f ~%s\n' % (no_evaluations, best_fit, eRate, fRate,
                                                                            ', '.join(
                                                                                ['%d' % ele for ele in best_subset]))
+                evolutionary_process += '\t\t %d infeasible solutions\n' % no_infeasible
+                no_infeasible = 0
 
         return best_sol, evolutionary_process

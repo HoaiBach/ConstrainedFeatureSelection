@@ -6,6 +6,7 @@ import time
 import CSO
 from Utility import DataHandle
 from Problem import FeatureSelection
+import WorldPara
 
 
 if __name__ == '__main__':
@@ -16,6 +17,8 @@ if __name__ == '__main__':
     in_dir = sys.argv[3]
     out_dir = sys.argv[4]
     parallel = sys.argv[5] == 'parallel'
+    WorldPara.PENALISE_WORSE_THAN_FULL = sys.argv[6] == 'constrained'
+
     seed = 1617 * run
     np.random.seed(seed)
     random.seed(seed)
@@ -23,6 +26,7 @@ if __name__ == '__main__':
     folds = DataHandle.load_data(in_dir, dataset)
     fold_idx = 1
     to_print = 'Parallel: %s\n' % str(parallel)
+    to_print += 'Constrained: %s\n' % str(WorldPara.PENALISE_WORSE_THAN_FULL)
 
     full_test_accs = []
     sel_accs = []

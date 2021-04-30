@@ -2,7 +2,8 @@ import numpy as np
 import abc
 from multiprocessing import get_context
 from sklearn.model_selection import StratifiedKFold as SKF, KFold
-from sklearn.metrics import balanced_accuracy_score
+from Utility import Helpers
+import WorldPara
 
 
 class Problem(metaclass=abc.ABCMeta):
@@ -57,6 +58,8 @@ class FeatureSelection(Problem):
         else:
             self.skf = SKF(n_splits=k, shuffle=True, random_state=1617)
 
+        self.full_test_error = Helpers.kFoldCrossValidation(self.X, self.y, self.clf, self.skf)
+
     def init_pop(self, pop_size):
         if self.init_style == 'Bing':
             large_size = pop_size // 3
@@ -95,15 +98,11 @@ class FeatureSelection(Problem):
             return self.worst_fitness()
 
         # error rate using K-fold
-        error = 0.0
         X_selected = self.X[:, selected_features]
-        for train_idx, test_idx in self.skf.split(X_selected, self.y):
-            X_train, X_test = X_selected[train_idx, :], X_selected[test_idx, :]
-            y_train, y_test = self.y[train_idx], self.y[test_idx]
-            self.clf.fit(X_train, y_train)
-            y_test_pred = self.clf.predict(X_test)
-            error += 1.0 - balanced_accuracy_score(y_true=y_test, y_pred=y_test_pred)
-        error = error / self.skf.n_splits
+        error = Helpers.kFoldCrossValidation(X_selected, self.y, self.clf, self.skf)
+        if WorldPara.PENALISE_WORSE_THAN_FULL:
+            if error > self.full_test_error:
+                error = float('inf')
 
         sel_ratio = len(selected_features) / self.no_features
         fitness = (1.0 - self.f_weight) * error + self.f_weight * sel_ratio
