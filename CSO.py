@@ -1,5 +1,5 @@
 import numpy as np
-
+from Utility import Helpers
 
 class CSO:
 
@@ -71,7 +71,7 @@ class CSO:
             import WorldPara
             feasible_indices = []
             if WorldPara.PENALISE_WORSE_THAN_FULL:
-                feasible_indices = np.where(pop_fit != float('inf'))[0]
+                feasible_indices = np.where(np.array(pop_fit) != float('inf'))[0]
 
             for idx1, idx2 in zip(indices_pool[0::2], indices_pool[1::2]):
                 if pop_fit[idx1] == float('inf'):
@@ -82,7 +82,7 @@ class CSO:
                     # contrasting 2 random individuals
                     if pop_fit[idx1] == pop_fit[idx2] == float('inf') and len(feasible_indices) > 0:
                         # both have to learn from feasible solutions
-                        fea_sols = np.random.choice(feasible_indices, size=2, replace=True)
+                        fea_sols = np.random.choice(feasible_indices, size=2, replace=False)
                         for learn_idx, master_idx in zip([idx1, idx2], fea_sols):
                             r1 = np.random.rand(dim)
                             r2 = np.random.rand(dim)
@@ -184,6 +184,9 @@ class CSO:
                                                                            ', '.join(
                                                                                ['%d' % ele for ele in best_subset]))
                 evolutionary_process += '\t\t %d infeasible solutions\n' % no_infeasible
+                pop_diversity = Helpers.population_stat(pop_positions)
+                evolutionary_process += '\t\t Pop diversity: %f\n' % pop_diversity
+                evolutionary_process += '\t\t Pop fit: %s\n' % ', '.join(['%.4f' % fit for fit in pop_fit])
                 no_infeasible = 0
 
         return best_sol, evolutionary_process

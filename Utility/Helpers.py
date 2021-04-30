@@ -1,5 +1,6 @@
 from sklearn.metrics import balanced_accuracy_score
 import math
+import numpy as np
 
 
 def trainTestEvaluation(X_train, y_train, X_test, y_test, clf):
@@ -22,6 +23,15 @@ def kFoldCrossValidation(X, y, clf, skf):
     error = error/no_folds
 
     return error
+
+
+def population_stat(pop: np.array):
+    pop_mean = np.mean(pop, axis=0)
+    diff_mean = pop - pop_mean
+    diff_mean = diff_mean**2
+    diverse = np.mean([np.sqrt(np.sum(diff_mean, axis=1))])
+    return diverse
+
 
 
 def sigmoid(value):
