@@ -1,9 +1,10 @@
 import numpy as np
 from Utility import Helpers
+from Problem import FeatureSelection
 
 class CSO:
 
-    def __init__(self, problem, pop_size=100, max_evaluations=10000,
+    def __init__(self, problem: FeatureSelection, pop_size=100, max_evaluations=10000,
                  phi=0.05, topology='global', max_pos=1.0, min_pos=0.0,
                  parallel='False'):
         self.problem = problem
@@ -58,6 +59,8 @@ class CSO:
         best_sol = None
         best_fit = self.problem.worst_fitness()
         milestone = no_evaluations
+        stuck_for = 0
+        best_updated = False
         while no_evaluations < self.max_evaluations:
             next_pop = []
             next_pop_fitness = []
@@ -173,6 +176,7 @@ class CSO:
                 if self.problem.is_better(fit, best_fit):
                     best_fit = fit
                     best_sol = np.copy(sol)
+                    best_updated = True
 
             if no_evaluations >= milestone:
                 milestone += self.pop_size
@@ -187,6 +191,34 @@ class CSO:
                 pop_diversity = Helpers.population_stat(pop_positions)
                 evolutionary_process += '\t\t Pop diversity: %f\n' % pop_diversity
                 evolutionary_process += '\t\t Pop fit: %s\n' % ', '.join(['%.4f' % fit for fit in pop_fit])
+
+                if best_updated:
+                    stuck_for = 0
+                else:
+                    stuck_for += 1
+                best_updated = False
+                evolutionary_process += '\t\t Stuck for: %d\n' % stuck_for
+
+                if stuck_for >= 5 and WorldPara.ENHANCE_CONSTRAIN:
+                    if WorldPara.ERR_CONSTRAIN:
+                        # calculate pop_err first
+                        sel_ratio = [len(self.problem.position_2_solution(ind)[0]) / self.problem.no_features
+                                     for ind in pop_positions]
+                        pop_error = np.array([])
+                        for fit, ratio in zip(pop_fit, sel_ratio):
+                            sel_err = (fit - self.problem.f_weight * ratio) / (1 - self.problem.f_weight)
+                            pop_error = np.append(pop_error, sel_err)
+                        new_constrain = np.median(pop_error)
+                        invalid_indices = np.where(pop_error > new_constrain)
+                    else:
+                        pop_fit = np.array(pop_fit)
+                        new_constrain = np.median(pop_fit)
+                        invalid_indices = np.where(pop_fit > new_constrain)
+
+                    self.problem.constrain_cond = new_constrain
+                    pop_fit[invalid_indices] = float('inf')
+
+                evolutionary_process += '\t\t Constrained error: %f\n' % self.problem.constrain_cond
                 no_infeasible = 0
 
         return best_sol, evolutionary_process

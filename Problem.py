@@ -58,7 +58,11 @@ class FeatureSelection(Problem):
         else:
             self.skf = SKF(n_splits=k, shuffle=True, random_state=1617)
 
-        self.full_test_error = Helpers.kFoldCrossValidation(self.X, self.y, self.clf, self.skf)
+        full_err = Helpers.kFoldCrossValidation(self.X, self.y, self.clf, self.skf)
+        if WorldPara.ERR_CONSTRAIN:
+            self.constrain_cond = full_err
+        else:
+            self.constrain_cond = (1.0-self.f_weight)*full_err+self.f_weight*1.0
 
     def init_pop(self, pop_size):
         if self.init_style == 'Bing':
@@ -100,12 +104,17 @@ class FeatureSelection(Problem):
         # error rate using K-fold
         X_selected = self.X[:, selected_features]
         error = Helpers.kFoldCrossValidation(X_selected, self.y, self.clf, self.skf)
-        if WorldPara.PENALISE_WORSE_THAN_FULL:
-            if error > self.full_test_error:
-                error = float('inf')
 
         sel_ratio = len(selected_features) / self.no_features
         fitness = (1.0 - self.f_weight) * error + self.f_weight * sel_ratio
+
+        if WorldPara.PENALISE_WORSE_THAN_FULL:
+            if WorldPara.ERR_CONSTRAIN:
+                if error > self.constrain_cond:
+                    fitness = float('inf')
+            else:
+                if fitness > self.constrain_cond:
+                    fitness = float('inf')
 
         return fitness
 

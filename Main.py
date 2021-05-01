@@ -17,7 +17,15 @@ if __name__ == '__main__':
     in_dir = sys.argv[3]
     out_dir = sys.argv[4]
     parallel = sys.argv[5] == 'parallel'
-    WorldPara.PENALISE_WORSE_THAN_FULL = sys.argv[6] == 'constrained'
+    if sys.argv[6].startswith('constrained'):
+        WorldPara.PENALISE_WORSE_THAN_FULL = True
+        WorldPara.ENHANCE_CONSTRAIN = sys.argv[6].split('-')[1] == 'enhance'
+        WorldPara.ERR_CONSTRAIN = sys.argv[6].split('-')[2] == 'error'
+    else:
+        WorldPara.PENALISE_WORSE_THAN_FULL = False
+
+    if WorldPara.ENHANCE_CONSTRAIN:
+        assert WorldPara.PENALISE_WORSE_THAN_FULL
 
     seed = 1617 * run
     np.random.seed(seed)
@@ -27,6 +35,8 @@ if __name__ == '__main__':
     fold_idx = 1
     to_print = 'Parallel: %s\n' % str(parallel)
     to_print += 'Constrained: %s\n' % str(WorldPara.PENALISE_WORSE_THAN_FULL)
+    to_print += 'Enhance: %s\n' % str(WorldPara.ENHANCE_CONSTRAIN)
+    to_print += 'Error Constrain: %s\n' % str(WorldPara.ERR_CONSTRAIN)
 
     full_test_accs = []
     sel_accs = []
