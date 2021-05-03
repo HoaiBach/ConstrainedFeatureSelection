@@ -7,6 +7,7 @@ import CSO
 from Utility import DataHandle
 from Problem import FeatureSelection
 import WorldPara
+from Utility import Helpers
 
 
 if __name__ == '__main__':
@@ -71,7 +72,14 @@ if __name__ == '__main__':
         prob = FeatureSelection(X=X_train, y=y_train, classifier=clf,
                                 init_style='Bing', fratio_weight=0.02)
 
-        cso = CSO.CSO(prob, pop_size=100, max_evaluations=10000, phi=0.05, topology='ring', parallel=parallel)
+        cross_train_err = Helpers.kFoldCrossValidation(X_train, y_train, prob.clf, prob.skf)
+        if WorldPara.ERR_CONSTRAIN:
+            cond_constrain = cross_train_err
+        else:
+            cond_constrain = (1.0-prob.f_weight)*cross_train_err + prob.f_weight*1.0
+
+        cso = CSO.CSO(prob, cond_constrain=cond_constrain, pop_size=100, max_evaluations=10000,
+                      phi=0.05, topology='ring', parallel=parallel)
         sol, ep = cso.evolve()
         processing_time = time.time() - start
         to_print += ep

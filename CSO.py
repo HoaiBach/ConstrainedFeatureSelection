@@ -1,12 +1,13 @@
 import numpy as np
 from Utility import Helpers
 from Problem import FeatureSelection
+import WorldPara
+
 
 class CSO:
 
-    def __init__(self, problem: FeatureSelection, pop_size=100, max_evaluations=10000,
-                 phi=0.05, topology='global', max_pos=1.0, min_pos=0.0,
-                 parallel='False'):
+    def __init__(self, problem: FeatureSelection, cond_constrain, pop_size=100, max_evaluations=10000,
+                 phi=0.05, topology='global', max_pos=1.0, min_pos=0.0, parallel='False'):
         self.problem = problem
         # ensure even pop_size
         if pop_size % 2 == 1:
@@ -14,11 +15,11 @@ class CSO:
         self.pop_size = pop_size
         self.max_evaluations = max_evaluations
         self.phi = phi
-        # note topology can be 'global' or 'ring'
-        self.topology = topology
+        self.topology = topology  # note topology can be 'global' or 'ring'
         self.max_pos = max_pos
         self.min_pos = min_pos
         self.parallel = parallel
+        self.cond_constrain = cond_constrain
 
     def evaluate_pop(self, pop):
         """
@@ -27,29 +28,43 @@ class CSO:
         :return:
         """
         if self.parallel:
-            fits = self.problem.fitness_parallel(pop)
+            fit_errors = self.problem.fitness_parallel(pop)
         else:
-            fits = [self.problem.fitness(ind) for ind in pop]
-        return fits
+            fit_errors = [self.problem.fitness(ind) for ind in pop]
+        return fit_errors
+
+    def check_feasible(self, fit, err):
+        if WorldPara.ERR_CONSTRAIN:
+            return err <= self.cond_constrain
+        else:
+            return fit <= self.cond_constrain
 
     def evolve(self):
         # Init the population
         dim = self.problem.dim
         pop_positions = self.problem.init_pop(self.pop_size)
         pop_vels = np.zeros((self.pop_size, dim))
-        pop_fit = self.evaluate_pop(pop_positions)
+        pop_err = np.zeros(self.pop_size)
+        pop_fit = np.zeros(self.pop_size)
+
+        fit_errors = self.evaluate_pop(pop_positions)
+        for idx, (fit, err) in enumerate(fit_errors):
+            pop_err[idx] = err
+            pop_fit[idx] = fit
 
         no_evaluations = len(pop_positions)
         evolutionary_process = ''
 
         if self.topology == 'global':
-            neighbors = [np.arange(self.pop_size)] * self.pop_size
+            neighbors = np.array([np.arange(self.pop_size)] * self.pop_size)
         elif self.topology == 'ring':
-            neighbors = [[idx - 1, idx + 1] for idx in np.arange(start=1, stop=self.pop_size - 1)]
-            first_ind = [[1, self.pop_size - 1]]
+            neighbors = [[idx - 1, idx, idx + 1] for idx in np.arange(start=1, stop=self.pop_size - 1)]
+            # for first ind
+            first_ind = [[self.pop_size - 1, 0, 1]]
             first_ind.extend(neighbors)
             neighbors = first_ind
-            neighbors.append([0, self.pop_size - 2])
+            # for last ind
+            neighbors.append([self.pop_size-2, self.pop_size - 1, 0])
             neighbors = np.array(neighbors)
         else:
             raise Exception('Topology %s is not implemented.' % self.topology)
@@ -58,32 +73,40 @@ class CSO:
         # Start the evolution
         best_sol = None
         best_fit = self.problem.worst_fitness()
+        best_err = 1.0
         milestone = no_evaluations
         stuck_for = 0
         best_updated = False
+
         while no_evaluations < self.max_evaluations:
-            next_pop = []
-            next_pop_fitness = []
-            next_vels = []
-            to_evaluate = []
+            next_pop = np.zeros((self.pop_size, self.problem.dim))
+            next_vels = np.zeros((self.pop_size, self.problem.dim))
+            next_pop_fit = np.array([None]*self.pop_size)
+            next_pop_err = np.array([None]*self.pop_size)
+
+            to_evaluate = np.array([], dtype=int)
             no_infeasible = 0
 
             indices_pool = np.arange(self.pop_size)
             np.random.shuffle(indices_pool)
 
-            import WorldPara
             feasible_indices = []
             if WorldPara.PENALISE_WORSE_THAN_FULL:
-                feasible_indices = np.where(np.array(pop_fit) != float('inf'))[0]
+                feasible_indices = np.array([idx for idx in np.arange(self.pop_size)
+                                             if self.check_feasible(pop_fit[idx], pop_err[idx])])
 
             for idx1, idx2 in zip(indices_pool[0::2], indices_pool[1::2]):
-                if pop_fit[idx1] == float('inf'):
+
+                if not self.check_feasible(pop_fit[idx1], pop_err[idx1]):
                     no_infeasible += 1
-                if pop_fit[idx2] == float('inf'):
+                if not self.check_feasible(pop_fit[idx2], pop_err[idx2]):
                     no_infeasible += 1
+
                 if WorldPara.PENALISE_WORSE_THAN_FULL:
                     # contrasting 2 random individuals
-                    if pop_fit[idx1] == pop_fit[idx2] == float('inf') and len(feasible_indices) > 0:
+                    if (not self.check_feasible(pop_fit[idx1], pop_err[idx1])) and \
+                            (not self.check_feasible(pop_fit[idx2], pop_err[idx2])) and \
+                            len(feasible_indices) >= 2:
                         # both have to learn from feasible solutions
                         fea_sols = np.random.choice(feasible_indices, size=2, replace=False)
                         for learn_idx, master_idx in zip([idx1, idx2], fea_sols):
@@ -97,12 +120,19 @@ class CSO:
                             new_pos[new_pos < self.min_pos] = self.min_pos
 
                             # add new position of loser to the next pop
-                            next_pop.append(new_pos)
-                            next_pop_fitness.append(None)
-                            next_vels.append(vel)
-                            to_evaluate.append(len(next_pop) - 1)
+                            next_pop[learn_idx] = new_pos
+                            next_vels[learn_idx] = vel
+                            to_evaluate = np.append(to_evaluate, learn_idx)
                     else:
-                        if self.problem.is_better(pop_fit[idx1], pop_fit[idx2]):
+                        if self.check_feasible(pop_fit[idx1], pop_err[idx1]) and \
+                                not (self.check_feasible(pop_fit[idx2], pop_err[idx2])):
+                            winner_idx = idx1
+                            loser_idx = idx2
+                        elif self.check_feasible(pop_fit[idx2], pop_err[idx2]) and \
+                                not (self.check_feasible(pop_fit[idx1], pop_err[idx1])):
+                            winner_idx = idx2
+                            loser_idx = idx1
+                        elif self.problem.is_better(pop_fit[idx1], pop_fit[idx2]):
                             winner_idx = idx1
                             loser_idx = idx2
                         else:
@@ -110,9 +140,10 @@ class CSO:
                             loser_idx = idx1
 
                         # add winner to next pop
-                        next_pop.append(np.copy(pop_positions[winner_idx]))
-                        next_pop_fitness.append(pop_fit[winner_idx])
-                        next_vels.append(np.copy(pop_vels[winner_idx]))
+                        next_pop[winner_idx] = np.copy(pop_positions[winner_idx])
+                        next_vels[winner_idx] = np.copy(pop_vels[winner_idx])
+                        next_pop_fit[winner_idx] = pop_fit[winner_idx]
+                        next_pop_err[winner_idx] = pop_fit[winner_idx]
 
                         # update loser
                         r1 = np.random.rand(dim)
@@ -125,10 +156,9 @@ class CSO:
                         new_pos[new_pos < self.min_pos] = self.min_pos
 
                         # add new position of loser to the next pop
-                        next_pop.append(new_pos)
-                        next_pop_fitness.append(None)
-                        next_vels.append(vel)
-                        to_evaluate.append(len(next_pop) - 1)
+                        next_pop[loser_idx] = new_pos
+                        next_vels[loser_idx] = vel
+                        to_evaluate = np.append(to_evaluate, loser_idx)
                 else:
                     # contrasting 2 random individuals
                     if self.problem.is_better(pop_fit[idx1], pop_fit[idx2]):
@@ -139,9 +169,10 @@ class CSO:
                         loser_idx = idx1
 
                     # add winner to next pop
-                    next_pop.append(np.copy(pop_positions[winner_idx]))
-                    next_pop_fitness.append(pop_fit[winner_idx])
-                    next_vels.append(np.copy(pop_vels[winner_idx]))
+                    next_pop[winner_idx] = np.copy(pop_positions[winner_idx])
+                    next_vels[winner_idx] = np.copy(pop_vels[winner_idx])
+                    next_pop_fit[winner_idx] = pop_fit[winner_idx]
+                    next_pop_err[winner_idx] = pop_err[winner_idx]
 
                     # update loser
                     r1 = np.random.rand(dim)
@@ -154,37 +185,36 @@ class CSO:
                     new_pos[new_pos < self.min_pos] = self.min_pos
 
                     # add new position of loser to the next pop
-                    next_pop.append(new_pos)
-                    next_pop_fitness.append(None)
-                    next_vels.append(vel)
-                    to_evaluate.append(len(next_pop) - 1)
+                    next_pop[loser_idx] = new_pos
+                    next_vels[loser_idx] = vel
+                    to_evaluate = np.append(to_evaluate, loser_idx)
 
             assert len(next_pop) == len(pop_positions)
-            next_pop = np.array(next_pop)
 
-            eval_fits = self.evaluate_pop(next_pop[to_evaluate])
-            for idx, fit in zip(to_evaluate, eval_fits):
-                next_pop_fitness[idx] = fit
+            eval_fit_errs = self.evaluate_pop(next_pop[to_evaluate])
+            for idx, (fit, err) in zip(to_evaluate, eval_fit_errs):
+                next_pop_fit[idx] = fit
+                next_pop_err[idx] = err
             no_evaluations += len(to_evaluate)
 
-            pop_positions = np.array(next_pop)
-            pop_fit = np.array(next_pop_fitness)
-            pop_vels = np.array(next_vels)
+            pop_positions = next_pop
+            pop_vels = next_vels
+            pop_fit = next_pop_fit
+            pop_err = next_pop_err
 
             # update the best ind if necessary
-            for fit, sol in zip(pop_fit, pop_positions):
+            for fit, err, sol in zip(pop_fit, pop_err, pop_positions):
                 if self.problem.is_better(fit, best_fit):
                     best_fit = fit
                     best_sol = np.copy(sol)
+                    best_err = err
                     best_updated = True
 
             if no_evaluations >= milestone:
                 milestone += self.pop_size
                 best_subset = self.problem.position_2_solution(best_sol)[0]
-                f_weight = self.problem.f_weight
-                fRate = len(best_subset) / len(best_sol)
-                eRate = (best_fit - f_weight * fRate) / (1 - f_weight)
-                evolutionary_process += 'At %d: %.4f, %.4f, %.2f ~%s\n' % (no_evaluations, best_fit, eRate, fRate,
+                fRate = len(best_subset)/self.problem.dim
+                evolutionary_process += 'At %d: %.4f, %.4f, %.2f ~%s\n' % (no_evaluations, best_fit, best_err, fRate,
                                                                            ', '.join(
                                                                                ['%d' % ele for ele in best_subset]))
                 evolutionary_process += '\t\t %d infeasible solutions\n' % no_infeasible
@@ -199,26 +229,57 @@ class CSO:
                 best_updated = False
                 evolutionary_process += '\t\t Stuck for: %d\n' % stuck_for
 
-                if stuck_for >= 5 and WorldPara.ENHANCE_CONSTRAIN:
+                if stuck_for == 5 and WorldPara.ENHANCE_CONSTRAIN:
                     if WorldPara.ERR_CONSTRAIN:
-                        # calculate pop_err first
-                        sel_ratio = [len(self.problem.position_2_solution(ind)[0]) / self.problem.no_features
-                                     for ind in pop_positions]
-                        pop_error = np.array([])
-                        for fit, ratio in zip(pop_fit, sel_ratio):
-                            sel_err = (fit - self.problem.f_weight * ratio) / (1 - self.problem.f_weight)
-                            pop_error = np.append(pop_error, sel_err)
-                        new_constrain = np.median(pop_error)
-                        invalid_indices = np.where(pop_error > new_constrain)
+                        new_constrain = np.median(pop_err)
                     else:
-                        pop_fit = np.array(pop_fit)
                         new_constrain = np.median(pop_fit)
-                        invalid_indices = np.where(pop_fit > new_constrain)
 
-                    self.problem.constrain_cond = new_constrain
-                    pop_fit[invalid_indices] = float('inf')
+                    self.cond_constrain = new_constrain
+                elif stuck_for >= 10 and WorldPara.ENHANCE_CONSTRAIN:
+                    # reinit half of the pop
+                    to_reinit = np.argsort(pop_fit)[::-1][:(9*self.pop_size) // 10]
+                    for idx in to_reinit:
+                        pop_positions[idx] = np.random.rand(self.problem.dim)
+                        pop_vels[idx] = np.zeros(self.problem.dim)
+                    reinit_fit_errors = self.evaluate_pop(pop_positions[to_reinit])
+                    no_evaluations += len(to_reinit)
+                    for idx, (fit, err) in zip(to_reinit, reinit_fit_errors):
+                        pop_fit[idx] = fit
+                        pop_err[idx] = err
+                    if WorldPara.ERR_CONSTRAIN:
+                        new_constrain = np.median(pop_err)
+                    else:
+                        new_constrain = np.median(pop_fit)
+                    self.cond_constrain = new_constrain
+                    stuck_for = 0
+                # if stuck_for >= 5 and WorldPara.ENHANCE_CONSTRAIN:
+                #     re_evaluate = np.array([], dtype=int)
+                #     for idx, ind in enumerate(pop_positions):
+                #         mutate_prob = 1.0/self.problem.dim
+                #         mutated = False
+                #         for e_idx in range(len(pop_positions[idx])):
+                #             if np.random.rand() < mutate_prob:
+                #                 pop_positions[idx][e_idx] = 1.0 - pop_positions[idx][e_idx]
+                #                 mutated = True
+                #         if mutated:
+                #             re_evaluate = np.append(re_evaluate, idx)
+                #     re_fit_errors = self.evaluate_pop(pop_positions[re_evaluate])
+                #     no_evaluations += len(re_evaluate)
+                #     for idx, (fit, err) in zip(re_evaluate, re_fit_errors):
+                #         pop_fit[idx] = fit
+                #         pop_err[idx] = err
+                #         if self.problem.is_better(fit, best_fit):
+                #             best_fit = fit
+                #             best_sol = np.copy(pop_positions[idx])
+                #             best_err = err
+                #     stuck_for = 0
+                #     if WorldPara.ERR_CONSTRAIN:
+                #         self.cond_constrain = np.median(pop_err)
+                #     else:
+                #         self.cond_constrain = np.median(pop_fit)
 
-                evolutionary_process += '\t\t Constrained error: %f\n' % self.problem.constrain_cond
+                evolutionary_process += '\t\t Constrained error: %f\n' % self.cond_constrain
                 no_infeasible = 0
 
         return best_sol, evolutionary_process

@@ -58,11 +58,6 @@ class FeatureSelection(Problem):
         else:
             self.skf = SKF(n_splits=k, shuffle=True, random_state=1617)
 
-        full_err = Helpers.kFoldCrossValidation(self.X, self.y, self.clf, self.skf)
-        if WorldPara.ERR_CONSTRAIN:
-            self.constrain_cond = full_err
-        else:
-            self.constrain_cond = (1.0-self.f_weight)*full_err+self.f_weight*1.0
 
     def init_pop(self, pop_size):
         if self.init_style == 'Bing':
@@ -99,47 +94,19 @@ class FeatureSelection(Problem):
     def fitness(self, sol):
         selected_features, unselected_features = self.position_2_solution(sol)
         if len(selected_features) == 0:
-            return self.worst_fitness()
+            fitness = self.worst_fitness()
+            error = 1.0
+        else:
+            X_selected = self.X[:, selected_features]
+            error = Helpers.kFoldCrossValidation(X_selected, self.y, self.clf, self.skf)
 
-        # error rate using K-fold
-        X_selected = self.X[:, selected_features]
-        error = Helpers.kFoldCrossValidation(X_selected, self.y, self.clf, self.skf)
+            sel_ratio = len(selected_features) / self.no_features
+            fitness = (1.0 - self.f_weight) * error + self.f_weight * sel_ratio
 
-        sel_ratio = len(selected_features) / self.no_features
-        fitness = (1.0 - self.f_weight) * error + self.f_weight * sel_ratio
-
-        if WorldPara.PENALISE_WORSE_THAN_FULL:
-            if WorldPara.ERR_CONSTRAIN:
-                if error > self.constrain_cond:
-                    fitness = float('inf')
-            else:
-                if fitness > self.constrain_cond:
-                    fitness = float('inf')
-
-        return fitness
+        return fitness, error
 
     def fitness_parallel(self, sol_list):
         with get_context('spawn').Pool(processes=4) as pool:
             fitness_list = pool.map(self.fitness, sol_list)
             pool.close()
             return fitness_list
-
-
-class ShiftedGriewank(Problem):
-
-    def fitness_parallel(self, sol_list):
-        pass
-
-    def __init__(self, dim):
-        Problem.__init__(self, minimized=True)
-        self.dim = dim
-
-    def fitness(self, sol):
-        first = np.sum([ele ** 2 / 4000 for ele in sol])
-        second = 1
-        for idx, ele in enumerate(sol):
-            second *= np.cos(ele / np.sqrt(idx + 1))
-        return first - second + 1 - 180
-
-    def position_2_solution(self, pos):
-        pass
