@@ -55,9 +55,10 @@ class FeatureSelection(Problem):
         label_min = np.min(counts)
         if label_min < k:
             self.skf = KFold(n_splits=k, shuffle=True, random_state=1617)
+            self.skf_valid = KFold(n_splits=k, shuffle=True, random_state=1990)
         else:
             self.skf = SKF(n_splits=k, shuffle=True, random_state=1617)
-
+            self.skf_valid = SKF(n_splits=k, shuffle=True, random_state=1990)
 
     def init_pop(self, pop_size):
         if self.init_style == 'Bing':
@@ -99,6 +100,20 @@ class FeatureSelection(Problem):
         else:
             X_selected = self.X[:, selected_features]
             error = Helpers.kFoldCrossValidation(X_selected, self.y, self.clf, self.skf)
+
+            sel_ratio = len(selected_features) / self.no_features
+            fitness = (1.0 - self.f_weight) * error + self.f_weight * sel_ratio
+
+        return fitness, error
+
+    def fitness_valid(self, sol):
+        selected_features, unselected_features = self.position_2_solution(sol)
+        if len(selected_features) == 0:
+            fitness = self.worst_fitness()
+            error = 1.0
+        else:
+            X_selected = self.X[:, selected_features]
+            error = Helpers.kFoldCrossValidation(X_selected, self.y, self.clf, self.skf_valid)
 
             sel_ratio = len(selected_features) / self.no_features
             fitness = (1.0 - self.f_weight) * error + self.f_weight * sel_ratio
