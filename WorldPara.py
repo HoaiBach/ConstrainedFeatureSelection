@@ -1,3 +1,4 @@
-PENALISE_WORSE_THAN_FULL = False
-ENHANCE_CONSTRAIN = False
-ERR_CONSTRAIN = False
+CONSTRAIN_MODE = None  # single/hybrid
+CONSTRAIN_TYPE = None  # fit/err
+INIT_STYLE = 'Random' # Random or Diverse or Relief
+MUTATE_WINNER = True

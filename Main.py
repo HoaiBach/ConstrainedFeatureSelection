@@ -15,18 +15,19 @@ if __name__ == '__main__':
 
     dataset = sys.argv[1]
     run = int(sys.argv[2])
-    in_dir = sys.argv[3]
-    out_dir = sys.argv[4]
-    parallel = sys.argv[5] == 'parallel'
+    in_dir = sys.argv[3] # where is the FSmatlab
+    out_dir = sys.argv[4] # where to write run.txt
+    parallel = sys.argv[5] == 'parallel' # parallel or not
     if sys.argv[6].startswith('constrained'):
-        WorldPara.PENALISE_WORSE_THAN_FULL = True
-        WorldPara.ENHANCE_CONSTRAIN = sys.argv[6].split('-')[1] == 'enhance'
-        WorldPara.ERR_CONSTRAIN = sys.argv[6].split('-')[2] == 'error'
-    else:
-        WorldPara.PENALISE_WORSE_THAN_FULL = False
-
-    if WorldPara.ENHANCE_CONSTRAIN:
-        assert WorldPara.PENALISE_WORSE_THAN_FULL
+        # not_constrained/constrained-single-fit/constrained-single-err/constrained-hybrid
+        splits = sys.argv[6].split('-')
+        WorldPara.CONSTRAIN_MODE = splits[1]
+        if WorldPara.CONSTRAIN_MODE == 'single':
+            WorldPara.CONSTRAIN_TYPE = splits[2]
+        elif WorldPara.CONSTRAIN_MODE == 'hybrid':
+            WorldPara.CONSTRAIN_TYPE = 'err'
+        else:
+            raise Exception('%s mode is not implemented!' % WorldPara.CONSTRAIN_MODE)
 
     seed = 1617 * run
     np.random.seed(seed)
@@ -35,9 +36,9 @@ if __name__ == '__main__':
     folds = DataHandle.load_data(in_dir, dataset)
     fold_idx = 1
     to_print = 'Parallel: %s\n' % str(parallel)
-    to_print += 'Constrained: %s\n' % str(WorldPara.PENALISE_WORSE_THAN_FULL)
-    to_print += 'Enhance: %s\n' % str(WorldPara.ENHANCE_CONSTRAIN)
-    to_print += 'Error Constrain: %s\n' % str(WorldPara.ERR_CONSTRAIN)
+    to_print += 'Constrain mode: %s\n' % str(WorldPara.CONSTRAIN_MODE)
+    if WorldPara.CONSTRAIN_MODE == 'single':
+        to_print += 'Constrain type: %s\n' % str(WorldPara.CONSTRAIN_TYPE)
 
     full_test_accs = []
     sel_accs = []
@@ -72,11 +73,13 @@ if __name__ == '__main__':
         prob = FeatureSelection(X=X_train, y=y_train, classifier=clf,
                                 init_style='Bing', fratio_weight=0.02)
 
-        cross_train_err = Helpers.kFoldCrossValidation(X_train, y_train, prob.clf, prob.skf)
-        if WorldPara.ERR_CONSTRAIN:
-            cond_constrain = cross_train_err
-        else:
-            cond_constrain = (1.0-prob.f_weight)*cross_train_err + prob.f_weight*1.0
+        # cross_train_err = Helpers.kFoldCrossValidation(X_train, y_train, prob.clf, prob.skf)
+        # cross_train_err = Helpers.LOOCV_1NN(X_train, y_train)
+        # if WorldPara.ERR_CONSTRAIN:
+        #     cond_constrain = cross_train_err
+        # else:
+        #     cond_constrain = (1.0-prob.f_weight)*cross_train_err + prob.f_weight*1.0
+        cond_constrain = float('inf')
 
         cso = CSO.CSO(prob, cond_constrain=cond_constrain, pop_size=100, max_evaluations=10000,
                       phi=0.05, topology='ring', parallel=parallel)

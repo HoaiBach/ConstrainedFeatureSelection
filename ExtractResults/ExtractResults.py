@@ -8,15 +8,17 @@ Description:
 
 import numpy as np
 
-datasets = ['AR10P', 'COIL20', 'DLBCL', 'Ionosphere', 'Leukemia', 'Madelon', 'Musk1', 'ORL', 'QsarAndrogenReceptor',
-            'Semeion', 'USPS']
-runs =3
-methods = ['constrained-enhance-error', 'constrained-enhance-fit',
-           'constrained-not_enhance-error', 'constrained-not_enhance-fit',
-           'not_constrained']
-short_methods = ['EnEr', 'EnFit', 'NotEr', 'NotFit', 'Std']
+datasets = ['Vehicle', 'ImageSegmentation', 'WallRobot', 'German', 'WBCD', 'GuesterPhase', 'Dermatology', 'Ionosphere',
+            'Chess', 'Sonar', 'Plant', 'Mice', 'Movementlibras', 'Hillvalley', 'Musk1', 'Semeion', 'LSVT', 'Madelon',
+            'Isolet', 'MultipleFeatures', 'Gametes', 'QsarAndrogenReceptor', 'COIL20', 'ORL', 'Yale', 'Bioresponse',
+            'Colon', 'SRBCT', 'warpAR10P', 'PCMAC', 'RELATHE', 'BASEHOCK', 'Prostate-GE', 'Carcinom', 'Ovarian',
+            'GLI-85']
+datasets = ['Bioresponse']
+runs = 1
+methods = ['constrained-single-fit', 'constrained-single-err', 'constrained-hybrid', 'not_constrained']
+short_methods = ['Fit', 'Err', 'Hybrid', 'Std']
 
-in_dir = '/vol/grid-solar/sgeusers/nguyenhoai2/Works/ConstrainedFeatureSelection/Results/'
+in_dir = '/vol/grid-solar/sgeusers/nguyenhoai2/Works/ConstrainedFeatureSelection/Results/LOOCV/'
 out_dir = '/home/nguyenhoai2/Research/PycharmProjects/ConstrainedFeatureSelection/ExtractResults/Process/'
 
 to_print_acc = 'Dataset\t' + '\t'.join(short_methods)+'\n'
@@ -35,7 +37,7 @@ for dataset in datasets:
                 lines = f.readlines()
                 for l_idx, line in enumerate(lines):
                     if line.startswith('Selected'):
-                        line = lines[l_idx-6]
+                        line = lines[l_idx-7]
                         fit = float(line.split(', ')[0].split(': ')[1])
                         fits = np.append(fits, fit)
 

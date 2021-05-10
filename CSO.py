@@ -33,10 +33,22 @@ class CSO:
             fit_errors = [self.problem.fitness(ind) for ind in pop]
         return fit_errors
 
-    def check_feasible(self, fit, err):
-        if WorldPara.ERR_CONSTRAIN:
-            return err <= self.cond_constrain
+    def evaluate_pop_loocv(self, pop):
+        """
+        Evaluate the pop of individuals, return the corresponding fitness
+        :param pop:
+        :return:
+        """
+        if self.parallel:
+            fit_errors = self.problem.fitness_loocv_parallel(pop)
         else:
+            fit_errors = [self.problem.fitness_loocv(ind) for ind in pop]
+        return fit_errors
+
+    def check_feasible(self, fit, err):
+        if WorldPara.CONSTRAIN_TYPE == 'err':
+            return err <= self.cond_constrain
+        elif WorldPara.CONSTRAIN_TYPE == 'fit':
             return fit <= self.cond_constrain
 
     def evolve(self):
@@ -47,7 +59,7 @@ class CSO:
         pop_err = np.zeros(self.pop_size)
         pop_fit = np.zeros(self.pop_size)
 
-        fit_errors = self.evaluate_pop(pop_positions)
+        fit_errors = self.evaluate_pop_loocv(pop_positions)
         for idx, (fit, err) in enumerate(fit_errors):
             pop_err[idx] = err
             pop_fit[idx] = fit
@@ -91,9 +103,12 @@ class CSO:
             np.random.shuffle(indices_pool)
 
             feasible_indices = []
-            if WorldPara.PENALISE_WORSE_THAN_FULL:
+            if not (WorldPara.CONSTRAIN_MODE is None):
                 feasible_indices = np.array([idx for idx in np.arange(self.pop_size)
                                              if self.check_feasible(pop_fit[idx], pop_err[idx])])
+
+            winner_mutants = np.empty((0, self.problem.dim))
+            winner_indices = np.array([], dtype=int)
 
             for idx1, idx2 in zip(indices_pool[0::2], indices_pool[1::2]):
 
@@ -102,7 +117,7 @@ class CSO:
                 if not self.check_feasible(pop_fit[idx2], pop_err[idx2]):
                     no_infeasible += 1
 
-                if WorldPara.PENALISE_WORSE_THAN_FULL:
+                if not (WorldPara.CONSTRAIN_MODE is None):
                     # contrasting 2 random individuals
                     if (not self.check_feasible(pop_fit[idx1], pop_err[idx1])) and \
                             (not self.check_feasible(pop_fit[idx2], pop_err[idx2])) and \
@@ -144,6 +159,10 @@ class CSO:
                         next_vels[winner_idx] = np.copy(pop_vels[winner_idx])
                         next_pop_fit[winner_idx] = pop_fit[winner_idx]
                         next_pop_err[winner_idx] = pop_fit[winner_idx]
+                        if WorldPara.MUTATE_WINNER:
+                            winner_indices = np.append(winner_indices, winner_idx)
+                            winner_mutants = np.append(winner_mutants,
+                                                       [self.problem.local_search(next_pop[winner_idx])], axis=0)
 
                         # update loser
                         r1 = np.random.rand(dim)
@@ -191,7 +210,17 @@ class CSO:
 
             assert len(next_pop) == len(pop_positions)
 
-            eval_fit_errs = self.evaluate_pop(next_pop[to_evaluate])
+            if WorldPara.MUTATE_WINNER:
+                assert len(winner_indices) > 0
+                winner_mutants_fit_errs = self.evaluate_pop_loocv(winner_mutants)
+                # no_evaluations += len(winner_indices)
+                for winner_idx, (fit, err), mutant in zip(winner_indices, winner_mutants_fit_errs, winner_mutants):
+                    if self.problem.is_better(fit, next_pop_fit[winner_idx]):
+                        next_pop[winner_idx] = mutant
+                        next_pop_fit[winner_idx] = fit
+                        next_pop_err[winner_idx] = err
+
+            eval_fit_errs = self.evaluate_pop_loocv(next_pop[to_evaluate])
             for idx, (fit, err) in zip(to_evaluate, eval_fit_errs):
                 next_pop_fit[idx] = fit
                 next_pop_err[idx] = err
@@ -209,6 +238,19 @@ class CSO:
                     best_sol = np.copy(sol)
                     best_err = err
                     best_updated = True
+
+            if WorldPara.CONSTRAIN_MODE == 'hybrid' \
+                    and stuck_for >= 10 and no_evaluations >= 3*self.max_evaluations//4:
+                WorldPara.CONSTRAIN_TYPE = 'fit'
+
+            if no_evaluations > self.max_evaluations//2 and \
+                    not (WorldPara.CONSTRAIN_MODE is None):
+                if WorldPara.CONSTRAIN_TYPE == 'err':
+                    self.cond_constrain = np.median(pop_err)
+                elif WorldPara.CONSTRAIN_TYPE == 'fit':
+                    self.cond_constrain = np.median(pop_fit)
+                else:
+                    raise Exception('Constrain %s is not implemented' % WorldPara.CONSTRAIN_TYPE)
 
             if no_evaluations >= milestone:
                 milestone += self.pop_size
@@ -228,58 +270,8 @@ class CSO:
                     stuck_for += 1
                 best_updated = False
                 evolutionary_process += '\t\t Stuck for: %d\n' % stuck_for
-
-                if stuck_for == 5 and WorldPara.ENHANCE_CONSTRAIN:
-                    if WorldPara.ERR_CONSTRAIN:
-                        new_constrain = np.median(pop_err)
-                    else:
-                        new_constrain = np.median(pop_fit)
-
-                    self.cond_constrain = new_constrain
-                elif stuck_for >= 10 and WorldPara.ENHANCE_CONSTRAIN:
-                    # reinit half of the pop
-                    to_reinit = np.argsort(pop_fit)[::-1][:(9*self.pop_size) // 10]
-                    for idx in to_reinit:
-                        pop_positions[idx] = np.random.rand(self.problem.dim)
-                        pop_vels[idx] = np.zeros(self.problem.dim)
-                    reinit_fit_errors = self.evaluate_pop(pop_positions[to_reinit])
-                    no_evaluations += len(to_reinit)
-                    for idx, (fit, err) in zip(to_reinit, reinit_fit_errors):
-                        pop_fit[idx] = fit
-                        pop_err[idx] = err
-                    if WorldPara.ERR_CONSTRAIN:
-                        new_constrain = np.median(pop_err)
-                    else:
-                        new_constrain = np.median(pop_fit)
-                    self.cond_constrain = new_constrain
-                    stuck_for = 0
-                # if stuck_for >= 5 and WorldPara.ENHANCE_CONSTRAIN:
-                #     re_evaluate = np.array([], dtype=int)
-                #     for idx, ind in enumerate(pop_positions):
-                #         mutate_prob = 1.0/self.problem.dim
-                #         mutated = False
-                #         for e_idx in range(len(pop_positions[idx])):
-                #             if np.random.rand() < mutate_prob:
-                #                 pop_positions[idx][e_idx] = 1.0 - pop_positions[idx][e_idx]
-                #                 mutated = True
-                #         if mutated:
-                #             re_evaluate = np.append(re_evaluate, idx)
-                #     re_fit_errors = self.evaluate_pop(pop_positions[re_evaluate])
-                #     no_evaluations += len(re_evaluate)
-                #     for idx, (fit, err) in zip(re_evaluate, re_fit_errors):
-                #         pop_fit[idx] = fit
-                #         pop_err[idx] = err
-                #         if self.problem.is_better(fit, best_fit):
-                #             best_fit = fit
-                #             best_sol = np.copy(pop_positions[idx])
-                #             best_err = err
-                #     stuck_for = 0
-                #     if WorldPara.ERR_CONSTRAIN:
-                #         self.cond_constrain = np.median(pop_err)
-                #     else:
-                #         self.cond_constrain = np.median(pop_fit)
-
-                evolutionary_process += '\t\t Constrained error: %f\n' % self.cond_constrain
+                evolutionary_process += '\t\t Constrained type: %s\n' % WorldPara.CONSTRAIN_TYPE
+                evolutionary_process += '\t\t Constrained cond: %f\n' % self.cond_constrain
                 no_infeasible = 0
 
         return best_sol, evolutionary_process
