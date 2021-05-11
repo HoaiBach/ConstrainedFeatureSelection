@@ -5,6 +5,7 @@ from sklearn.model_selection import StratifiedKFold as SKF, KFold
 from Utility import Helpers
 import WorldPara
 from skfeature.function.similarity_based.reliefF import reliefF
+from sklearn.svm import LinearSVC as SVC
 
 
 class Problem(metaclass=abc.ABCMeta):
@@ -63,7 +64,8 @@ class FeatureSelection(Problem):
 
         self.rf_scores = reliefF(self.X, self.y, k=1)
         self.rf_scores = self.rf_scores/np.sum(self.rf_scores)
-        print(np.sum(self.rf_scores))
+
+        self.surrogate_clf = SVC(random_state=1617, max_iter=1000)
 
     def init_pop(self, pop_size):
         if self.init_style == 'Bing':
@@ -169,16 +171,80 @@ class FeatureSelection(Problem):
         rf_inv_sel = 1.0-self.rf_scores[selected_features]
         p1to0_rf_inv = p1to0*len(selected_features)/np.sum(rf_inv_sel)*rf_inv_sel
 
-        new_pos = np.copy(sol)
-        for prob, fea in zip(p1to0_rf_inv, selected_features):
-            if np.random.rand() < prob:
-                # flip from selected to not selected
-                new_pos[fea] = self.threshold - (sol[fea]-self.threshold)*self.threshold/(1.0-self.threshold)
-        for prob, fea in zip(p0to1_rf, unselected_features):
-            if np.random.rand() < prob:
-                # flip from unselected to selected
-                new_pos[fea] = self.threshold + (self.threshold-sol[fea])*(1.0-self.threshold)/self.threshold
+        no_iteration = 0
+        while no_iteration < WorldPara.LOCAL_ITERATIONS:
+            new_pos = np.copy(sol)
+            for prob, fea in zip(p1to0_rf_inv, selected_features):
+                if np.random.rand() < prob:
+                    # flip from selected to not selected
+                    new_pos[fea] = self.threshold - (sol[fea]-self.threshold)*self.threshold/(1.0-self.threshold)
+            for prob, fea in zip(p0to1_rf, unselected_features):
+                if np.random.rand() < prob:
+                    # flip from unselected to selected
+                    new_pos[fea] = self.threshold + (self.threshold-sol[fea])*(1.0-self.threshold)/self.threshold
 
-        return new_pos
+            if self.surrogate_check(new_pos, sol) == 1:
+                return new_pos, True
 
+            no_iteration += 1
 
+        return sol, False
+
+    def surrogate_check(self, sol1, sol2):
+        '''
+        Using the surrogate classifier to check which one is better sol1 or sol2
+        :param sol1:
+        :param sol2:
+        :return: 1 if sol1 is better, 0 otherwise
+        '''
+        sel1, _ = self.position_2_solution(sol1)
+        fea1 = np.zeros(len(sol1), dtype=float)
+        fea1[sel1] = 1.0
+
+        sel2, _ = self.position_2_solution(sol2)
+        fea2 = np.zeros(len(sol2), dtype=float)
+        fea2[sel2] = 1.0
+
+        data = fea1 -fea2
+        label = self.surrogate_clf.predict([data])[0]
+        return label
+
+    def surrogate_build(self, data: np.array):
+        '''
+        Using the data to train a surrogate classifier
+        Each instance in the data is: sol1 - sol2
+        The label is 1 if sol1 is better, the label is 0 otherwise
+        :param data:
+        :return:
+        '''
+
+        assert data.shape[1] == self.dim+1
+        X = data[:, :self.dim]
+        y = np.ravel(data[:, self.dim:])
+        self.surrogate_clf.fit(X=X, y=y)
+
+    def surrogate_prep_ins(self, sol1, fit1, sol2, fit2):
+        '''
+        Prepare instnace to train the surrogate model
+        the label of instance is 1 if fit1 is better than fit2, otherwise the label is 0
+        :param sol1:
+        :param sol2:
+        :param fit1:
+        :param fit2:
+        :return:
+        '''
+        sel1, _ = self.position_2_solution(sol1)
+        fea1 = np.zeros(len(sol1), dtype=float)
+        fea1[sel1] = 1.0
+
+        sel2, _ = self.position_2_solution(sol2)
+        fea2 = np.zeros(len(sol2), dtype=float)
+        fea2[sel2] = 1.0
+
+        instance = fea1 -fea2
+        if self.is_better(fit1, fit2):
+            label = 1.0
+        else:
+            label = 0.0
+        instance = np.append(instance, label)
+        return instance

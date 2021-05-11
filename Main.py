@@ -29,6 +29,7 @@ if __name__ == '__main__':
         else:
             raise Exception('%s mode is not implemented!' % WorldPara.CONSTRAIN_MODE)
 
+    assert not WorldPara.MUTATE_WINNER or (WorldPara.MUTATE_WINNER and not (WorldPara.CONSTRAIN_MODE is None))
     seed = 1617 * run
     np.random.seed(seed)
     random.seed(seed)
@@ -73,15 +74,8 @@ if __name__ == '__main__':
         prob = FeatureSelection(X=X_train, y=y_train, classifier=clf,
                                 init_style='Bing', fratio_weight=0.02)
 
-        # cross_train_err = Helpers.kFoldCrossValidation(X_train, y_train, prob.clf, prob.skf)
-        # cross_train_err = Helpers.LOOCV_1NN(X_train, y_train)
-        # if WorldPara.ERR_CONSTRAIN:
-        #     cond_constrain = cross_train_err
-        # else:
-        #     cond_constrain = (1.0-prob.f_weight)*cross_train_err + prob.f_weight*1.0
         cond_constrain = float('inf')
-
-        cso = CSO.CSO(prob, cond_constrain=cond_constrain, pop_size=100, max_evaluations=10000,
+        cso = CSO.CSO(prob, cond_constrain=cond_constrain, pop_size=100, max_iterations=200,
                       phi=0.05, topology='ring', parallel=parallel)
         sol, ep = cso.evolve()
         processing_time = time.time() - start
