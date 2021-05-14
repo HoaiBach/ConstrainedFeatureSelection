@@ -2,24 +2,27 @@ import numpy as np
 from Utility import Helpers
 from Problem import FeatureSelection
 import WorldPara
+import time
+
 
 class CSO:
 
-    def __init__(self, problem: FeatureSelection, cond_constrain, pop_size=100, max_iterations=100,
+    def __init__(self, problem: FeatureSelection, cond_constrain, pop_size=100, max_evaluations=10000,
                  phi=0.05, topology='ring', max_pos=1.0, min_pos=0.0, parallel='False'):
         self.problem = problem
         # ensure even pop_size
         if pop_size % 2 == 1:
             pop_size = pop_size + 1
         self.pop_size = pop_size
-        self.max_iterations = max_iterations
+        self.max_evaluations = max_evaluations
         self.phi = phi
         self.topology = topology  # note topology can be 'global' or 'ring'
         self.max_pos = max_pos
         self.min_pos = min_pos
         self.parallel = parallel
         self.cond_constrain = cond_constrain
-        self.data_surrogate = np.empty((0, self.problem.dim+1), dtype=float)
+        self.data_surrogate = []
+        self.no_evaluations = 0
 
     def evaluate_pop(self, pop):
         """
@@ -31,6 +34,7 @@ class CSO:
             fit_errors = self.problem.fitness_parallel(pop)
         else:
             fit_errors = [self.problem.fitness(ind) for ind in pop]
+        self.no_evaluations += len(pop)
         return fit_errors
 
     def evaluate_pop_loocv(self, pop):
@@ -43,6 +47,7 @@ class CSO:
             fit_errors = self.problem.fitness_loocv_parallel(pop)
         else:
             fit_errors = [self.problem.fitness_loocv(ind) for ind in pop]
+        self.no_evaluations += len(pop)
         return fit_errors
 
     def check_feasible(self, fit, err):
@@ -59,11 +64,13 @@ class CSO:
         pop_err = np.zeros(self.pop_size)
         pop_fit = np.zeros(self.pop_size)
 
+        # Evaluate the initialised pop
         fit_errors = self.evaluate_pop_loocv(pop_positions)
         for idx, (fit, err) in enumerate(fit_errors):
             pop_err[idx] = err
             pop_fit[idx] = fit
 
+        # Prepare the neighborhood topology
         if self.topology == 'global':
             neighbors = np.array([np.arange(self.pop_size)] * self.pop_size)
         elif self.topology == 'ring':
@@ -73,7 +80,7 @@ class CSO:
             first_ind.extend(neighbors)
             neighbors = first_ind
             # for last ind
-            neighbors.append([self.pop_size-2, self.pop_size - 1, 0])
+            neighbors.append([self.pop_size - 2, self.pop_size - 1, 0])
             neighbors = np.array(neighbors)
         else:
             raise Exception('Topology %s is not implemented.' % self.topology)
@@ -84,15 +91,12 @@ class CSO:
         best_sol = np.copy(pop_positions[best_idx])
         best_fit = pop_fit[best_idx]
         best_err = pop_err[best_idx]
-
-        no_iterations = 0
         stuck_for = 0
-        best_updated = False
 
         evolutionary_process = '***************************************\n'
         best_subset = self.problem.position_2_solution(best_sol)[0]
-        fRate = len(best_subset)/self.problem.dim
-        evolutionary_process += 'At %d: %.4f, %.4f, %.2f ~%s\n' % (no_iterations, best_fit, best_err, fRate,
+        fRate = len(best_subset) / self.problem.dim
+        evolutionary_process += 'At %d: %.4f, %.4f, %.2f ~%s\n' % (self.no_evaluations, best_fit, best_err, fRate,
                                                                    ', '.join(['%d' % ele for ele in best_subset]))
         evolutionary_process += '\t\t 0 infeasible solutions\n'
         pop_diversity = Helpers.population_stat(pop_positions)
@@ -102,15 +106,8 @@ class CSO:
         evolutionary_process += '\t\t Constrained type: %s\n' % WorldPara.CONSTRAIN_TYPE
         evolutionary_process += '\t\t Constrained cond: %f\n' % self.cond_constrain
 
-        while no_iterations < self.max_iterations:
-            next_pop = np.zeros((self.pop_size, self.problem.dim))
-            next_vels = np.zeros((self.pop_size, self.problem.dim))
-            next_pop_fit = np.array([None]*self.pop_size)
-            next_pop_err = np.array([None]*self.pop_size)
-
-            to_evaluate = np.array([], dtype=int)
-            no_infeasible = 0
-
+        iteration = 0
+        while self.no_evaluations < self.max_evaluations:
             indices_pool = np.arange(self.pop_size)
             np.random.shuffle(indices_pool)
 
@@ -119,14 +116,23 @@ class CSO:
                 feasible_indices = np.array([idx for idx in np.arange(self.pop_size)
                                              if self.check_feasible(pop_fit[idx], pop_err[idx])])
 
+            next_pop = np.zeros((self.pop_size, self.problem.dim))
+            next_vels = np.zeros((self.pop_size, self.problem.dim))
+            next_pop_fit = np.array([None] * self.pop_size)
+            next_pop_err = np.array([None] * self.pop_size)
+
+            to_evaluate = np.array([], dtype=int)
+            no_infeasible = 0
+            best_updated = False
+
             for idx1, idx2 in zip(indices_pool[0::2], indices_pool[1::2]):
 
                 # update the data to train surrogate
-                if WorldPara.MUTATE_WINNER:
+                if WorldPara.LOCAL_SEARCH:
                     sol1, fit1 = pop_positions[idx1], pop_fit[idx1]
                     sol2, fit2 = pop_positions[idx2], pop_fit[idx2]
                     instance = self.problem.surrogate_prep_ins(sol1, fit1, sol2, fit2)
-                    self.data_surrogate = np.append(self.data_surrogate, [instance], axis=0)
+                    self.data_surrogate.append(instance)
 
                 if not self.check_feasible(pop_fit[idx1], pop_err[idx1]):
                     no_infeasible += 1
@@ -240,69 +246,72 @@ class CSO:
                     best_err = err
                     best_updated = True
 
-            if WorldPara.CONSTRAIN_MODE == 'hybrid' and no_iterations >= 3*self.max_iterations//4:
-                WorldPara.CONSTRAIN_TYPE = 'fit'
-
-            if no_iterations > self.max_iterations//2 and not (WorldPara.CONSTRAIN_MODE is None):
-                if WorldPara.CONSTRAIN_TYPE == 'err':
-                    self.cond_constrain = np.median(pop_err)
-                elif WorldPara.CONSTRAIN_TYPE == 'fit':
-                    self.cond_constrain = np.median(pop_fit)
-                else:
-                    raise Exception('Constrain %s is not implemented' % WorldPara.CONSTRAIN_TYPE)
-
-            # Perform local search if necessary
-            if WorldPara.MUTATE_WINNER and stuck_for >= 9:
-                top_indices = np.argsort(pop_fit)[:int(0.1*self.pop_size)]
-
+            # update the surrogate model every 40 iterations
+            if WorldPara.LOCAL_SEARCH and iteration % WorldPara.UPDATE_DURATION == 0:
                 self.problem.surrogate_build(self.data_surrogate)
-                # firstly update the surrogate model
 
-                top_mutants = np.empty((0, self.problem.dim))
-                to_evaluate_mutants = np.array([], dtype=int)
+            # Perform local search if stuck more than the threshold and the best position is not updated
+            if WorldPara.LOCAL_SEARCH and stuck_for >= WorldPara.STUCK_THRESHOLD and (not best_updated):
+                top_indices = np.argsort(pop_fit)[:int(WorldPara.TOP_POP_RATE * self.pop_size)]
+
+                top_mutants = []
+                to_evaluate_mutants = []
 
                 for top_idx in top_indices:
                     mutant, success = self.problem.local_search(pop_positions[top_idx])
                     if success:
-                        top_mutants = np.append(top_mutants, [mutant], axis=0)
-                        to_evaluate_mutants = np.append(to_evaluate_mutants, top_idx)
+                        top_mutants.append(mutant)
+                        to_evaluate_mutants.append(top_idx)
 
                 top_mutants_fit_errs = self.evaluate_pop_loocv(top_mutants)
-                # no_evaluations += len(winner_indices)
+                good_search = 0
                 for mutant_idx, (fit, err), mutant in zip(to_evaluate_mutants, top_mutants_fit_errs, top_mutants):
-                    if self.problem.is_better(fit, pop_fit[mutant_idx]):
+                    if not self.problem.is_better(pop_fit[mutant_idx], fit):
                         pop_positions[mutant_idx] = mutant
                         pop_fit[mutant_idx] = fit
                         pop_err[mutant_idx] = err
+                        good_search += 1
                         # update best if necessary
                         if self.problem.is_better(pop_fit[mutant_idx], best_fit):
                             best_sol = np.copy(pop_positions[mutant_idx])
                             best_fit = pop_fit[mutant_idx]
                             best_err = pop_err[mutant_idx]
                             best_updated = True
+                print(good_search)
+
+            # Update the stuck iterations
+            if best_updated:
+                stuck_for = 0
+            else:
+                stuck_for += 1
 
             # Prepare the evolutionary information
             best_subset = self.problem.position_2_solution(best_sol)[0]
-            fRate = len(best_subset)/self.problem.dim
-            evolutionary_process += 'At %d: %.4f, %.4f, %.2f ~%s\n' % (no_iterations+1, best_fit, best_err, fRate,
+            fRate = len(best_subset) / self.problem.dim
+            evolutionary_process += 'At %d: %.4f, %.4f, %.2f ~%s\n' % (self.no_evaluations, best_fit, best_err, fRate,
                                                                        ', '.join(['%d' % ele for ele in best_subset]))
             evolutionary_process += '\t\t %d infeasible solutions\n' % no_infeasible
             pop_diversity = Helpers.population_stat(pop_positions)
             evolutionary_process += '\t\t Pop diversity: %f\n' % pop_diversity
             evolutionary_process += '\t\t Pop fit: %s\n' % ', '.join(['%.4f' % fit for fit in pop_fit])
-
-            if best_updated:
-                stuck_for = 0
-            else:
-                stuck_for += 1
             evolutionary_process += '\t\t Stuck for: %d\n' % stuck_for
             evolutionary_process += '\t\t Constrained type: %s\n' % WorldPara.CONSTRAIN_TYPE
             evolutionary_process += '\t\t Constrained cond: %f\n' % self.cond_constrain
 
-            # Reset the information for each iteration
-            best_updated = False
-            no_infeasible = 0
+            # Update the constrain for the next iteration
+            if WorldPara.CONSTRAIN_MODE == 'hybrid' and\
+                    self.no_evaluations >= 3 * self.max_evaluations // 4:
+                WorldPara.CONSTRAIN_TYPE = 'fit'
 
-            no_iterations += 1
+            # if self.no_evaluations > self.max_evaluations // 2 and not (WorldPara.CONSTRAIN_MODE is None):
+            if not (WorldPara.CONSTRAIN_MODE is None):
+                if WorldPara.CONSTRAIN_TYPE == 'err':
+                    self.cond_constrain = min(self.cond_constrain, np.median(pop_err))
+                elif WorldPara.CONSTRAIN_TYPE == 'fit':
+                    self.cond_constrain = min(self.cond_constrain, np.median(pop_fit))
+                else:
+                    raise Exception('Constrain %s is not implemented' % WorldPara.CONSTRAIN_TYPE)
+
+            iteration += 1
 
         return best_sol, evolutionary_process

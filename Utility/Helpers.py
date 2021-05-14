@@ -1,6 +1,8 @@
 from sklearn.metrics import balanced_accuracy_score
 import math
 import numpy as np
+from sklearn.neighbors import NearestNeighbors
+from sklearn.metrics import pairwise_distances
 
 
 def trainTestEvaluation(X_train, y_train, X_test, y_test, clf):
@@ -25,17 +27,19 @@ def kFoldCrossValidation(X, y, clf, skf):
     return error
 
 
-def LOOCV_1NN(X, y):
-    from sklearn.neighbors import NearestNeighbors
-    from sklearn.metrics import pairwise_distances
-    nbrs = NearestNeighbors(n_neighbors=2, metric="precomputed")
+def LOOCV_NN(X: np.array, y: np.array, k):
+    nbrs = NearestNeighbors(n_neighbors=k + 1, metric="precomputed")
     distance = pairwise_distances(X)
     nbrs.fit(distance)
     _, indices = nbrs.kneighbors(distance)
-    nn_indices = indices[:, 1]
+    nn_indices = indices[:, 1:(k + 1)]
     y_pred = np.array([])
     for nn_idx in nn_indices:
-        y_pred = np.append(y_pred, y[nn_idx])
+        y_neighbors = y[nn_idx]
+        assert len(y_neighbors) == k
+        labels, counts = np.unique(y_neighbors, return_counts=True)
+        label = labels[np.argmax(counts)]
+        y_pred = np.append(y_pred, label)
     error = 1.0 - balanced_accuracy_score(y_true=y, y_pred=y_pred)
     return error
 
@@ -52,13 +56,25 @@ def sigmoid(value):
     return 1.0 / (1 + math.exp(-value))
 
 
-if __name__ == '__main__':
-    import time
-
-    X = np.random.rand(3000, 1000)
-    y = np.random.randint(low=1, high=5, size=3000)
-
-    start = time.time()
-    print(LOOCV_1NN(X, y))
-    exe_time = time.time() - start
-    print(exe_time)
+# if __name__ == '__main__':
+#     import time
+#
+#     X = np.random.rand(3000, 1000)
+#     y = np.random.randint(low=1, high=5, size=3000)
+#
+#     start = time.time()
+#     print(LOOCV_NN(X, y, k=1))
+#     exe_time = time.time() - start
+#     print(exe_time)
+#     print()
+#
+#     start = time.time()
+#     print(LOOCV_NN(X, y, k=3))
+#     exe_time = time.time() - start
+#     print(exe_time)
+#     print()
+#
+#     start = time.time()
+#     print(LOOCV_NN(X, y, k=5))
+#     exe_time = time.time() - start
+#     print(exe_time)

@@ -7,17 +7,17 @@ import CSO
 from Utility import DataHandle
 from Problem import FeatureSelection
 import WorldPara
-from Utility import Helpers
-
 
 if __name__ == '__main__':
     import sys
 
     dataset = sys.argv[1]
     run = int(sys.argv[2])
-    in_dir = sys.argv[3] # where is the FSmatlab
-    out_dir = sys.argv[4] # where to write run.txt
-    parallel = sys.argv[5] == 'parallel' # parallel or not
+    in_dir = sys.argv[3]  # where is the FSmatlab
+    out_dir = sys.argv[4]  # where to write run.txt
+    parallel = sys.argv[5] == 'parallel'  # parallel or not
+
+    # Parameter for Constrain optimisation
     if sys.argv[6].startswith('constrained'):
         # not_constrained/constrained-single-fit/constrained-single-err/constrained-hybrid
         splits = sys.argv[6].split('-')
@@ -27,26 +27,42 @@ if __name__ == '__main__':
         elif WorldPara.CONSTRAIN_MODE == 'hybrid':
             WorldPara.CONSTRAIN_TYPE = 'err'
         else:
-            raise Exception('%s mode is not implemented!' % WorldPara.CONSTRAIN_MODE)
+            raise Exception('%s constrain mode is not implemented!' % WorldPara.CONSTRAIN_MODE)
+    elif sys.argv[6] == 'not-constrained':
+        WorldPara.CONSTRAIN_MODE = None
+    else:
+        raise Exception('%s constrain mode is not implemented!' % sys.argv[6])
 
-    assert not WorldPara.MUTATE_WINNER or (WorldPara.MUTATE_WINNER and not (WorldPara.CONSTRAIN_MODE is None))
+    # Parameter for local search
+    if sys.argv[7].startswith('local'):
+        WorldPara.LOCAL_SEARCH = True
+    elif sys.argv[7].startswith('not-local'):
+        WorldPara.LOCAL_SEARCH = False
+    else:
+        raise Exception('%s local mode is not implemented!' % sys.argv[7])
+
     seed = 1617 * run
     np.random.seed(seed)
     random.seed(seed)
 
-    folds = DataHandle.load_data(in_dir, dataset)
-    fold_idx = 1
-    to_print = 'Parallel: %s\n' % str(parallel)
+    to_print = 'Number neighbors: %d\n' % WorldPara.NUM_NEIGHBORS
+    to_print += 'Parallel: %s\n' % str(parallel)
     to_print += 'Constrain mode: %s\n' % str(WorldPara.CONSTRAIN_MODE)
     if WorldPara.CONSTRAIN_MODE == 'single':
-        to_print += 'Constrain type: %s\n' % str(WorldPara.CONSTRAIN_TYPE)
+        to_print += '\tConstrain type: %s\n' % str(WorldPara.CONSTRAIN_TYPE)
+    to_print += 'Local search: %s\n' % str(WorldPara.LOCAL_SEARCH)
+    to_print += '\tStuck Threshold: %d\n' % WorldPara.STUCK_THRESHOLD
+    to_print += '\tLocal search iterations: %d\n' % WorldPara.LOCAL_ITERATIONS
+    to_print += '\tProportion of population: %f\n' %WorldPara.TOP_POP_RATE
 
     full_test_accs = []
     sel_accs = []
     f_ratios = []
     running_times = []
-    clf = KNN(1)
+    clf = KNN(n_neighbors=WorldPara.NUM_NEIGHBORS)
 
+    folds = DataHandle.load_data(in_dir, dataset)
+    fold_idx = 1
     for fold in folds:
         to_print += '====Fold %d====\n' % fold_idx
         fold_idx += 1
@@ -70,12 +86,11 @@ if __name__ == '__main__':
         to_print += '%s: Full testing accuracy %f\n' % (clf, acc)
 
         start = time.time()
-
         prob = FeatureSelection(X=X_train, y=y_train, classifier=clf,
-                                init_style='Bing', fratio_weight=0.02)
+                                init_style='Random', fratio_weight=0.02)
 
         cond_constrain = float('inf')
-        cso = CSO.CSO(prob, cond_constrain=cond_constrain, pop_size=100, max_iterations=200,
+        cso = CSO.CSO(prob, cond_constrain=cond_constrain, pop_size=100, max_evaluations=10000,
                       phi=0.05, topology='ring', parallel=parallel)
         sol, ep = cso.evolve()
         processing_time = time.time() - start

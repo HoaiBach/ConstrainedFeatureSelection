@@ -1,4 +1,5 @@
 from scipy import io
+import numpy as np
 
 
 def load_data(in_dir, dataset):
@@ -15,6 +16,13 @@ def load_data(in_dir, dataset):
     X = mat['X']
     X = X.astype(float)
     y = mat['Y']
+    # data = np.append(X, y, axis=1)
+    # f = open('/vol/grid-solar/sgeusers/nguyenhoai2/Dataset/FSCsv/'+dataset+'.txt', 'w')
+    # for instance in data:
+    #     to_write = ','.join([str(ele) for ele in instance[:len(instance)-1]])
+    #     to_write += ','+str(int(instance[len(instance)-1]))+'\n'
+    #     f.write(to_write)
+    # f.close()
     y = y[:, 0]
 
     # read pre-split
@@ -39,5 +47,8 @@ def load_data(in_dir, dataset):
 
 
 if __name__ == '__main__':
-    results = load_data(in_dir='/home/nguyenhoai2/Grid/data/', dataset='Sonar_test')
-    print('done')
+    import os
+    # filenames = [f.split('.')[0] for f in os.listdir('/vol/grid-solar/sgeusers/nguyenhoai2/Dataset/FSMatlab')]
+    # for filename in filenames:
+    #     load_data(in_dir='/vol/grid-solar/sgeusers/nguyenhoai2/Dataset/', dataset=filename)
+    #     print(filename)
