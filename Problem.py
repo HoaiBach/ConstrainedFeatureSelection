@@ -62,9 +62,26 @@ class FeatureSelection(Problem):
             self.skf = SKF(n_splits=k, shuffle=True, random_state=1617)
             self.skf_valid = SKF(n_splits=k, shuffle=True, random_state=1990)
 
-        self.rf_scores = reliefF(self.X, self.y, k=1)
-        self.rf_scores = self.rf_scores / np.sum(self.rf_scores)
+        self.scores = reliefF(self.X, self.y, k=1)
+        self.scores = self.scores / np.sum(self.scores)
 
+        # from Orange.data import Domain, Table
+        # from Orange.preprocess.discretize import EntropyMDL
+        # from Orange.preprocess import Discretize
+        # from skfeature.utility.mutual_information import su_calculation
+        # domain = Domain.from_numpy(X=X, Y=y)
+        # table = Table.from_numpy(domain=domain, X=X, Y=y)
+        # disc = Discretize()
+        # disc.method = EntropyMDL(force=True)
+        # table_dis = disc(table)
+        # X_dis = table_dis.X
+        # test_scores = []
+        # for i in range(self.no_features):
+        #     test_scores.append(su_calculation(X_dis[:, i], y))
+        # test_scores = np.array(test_scores)
+        # test_scores = test_scores/np.sum(test_scores)
+        # self.scores = test_scores
+        
         self.surrogate_clf = SVC(random_state=1617)
 
     def init_pop(self, pop_size):
@@ -146,11 +163,11 @@ class FeatureSelection(Problem):
         selected_features, unselected_features = self.position_2_solution(sol)
 
         p0to1 = 1.0 / len(sol)
-        rf_unsel = self.rf_scores[unselected_features]
+        rf_unsel = self.scores[unselected_features]
         p0to1_rf = p0to1 * len(unselected_features) / np.sum(rf_unsel) * rf_unsel
 
         p1to0 = 10.0 / len(sol)
-        rf_inv_sel = 1.0 - self.rf_scores[selected_features]
+        rf_inv_sel = 1.0 - self.scores[selected_features]
         p1to0_rf_inv = p1to0 * len(selected_features) / np.sum(rf_inv_sel) * rf_inv_sel
 
         no_iteration = 0
@@ -173,6 +190,70 @@ class FeatureSelection(Problem):
             no_iteration += 1
 
         return sol, False
+
+    def update_length(self, sol, max_length):
+        """
+        Update the sol with the given max_length
+        :param sol:
+        :param max_length:
+        :return:
+        """
+        selected_features, unselected_features = self.position_2_solution(sol)
+
+        rf_unsel = self.scores[unselected_features]
+        prob_to_add = rf_unsel/np.sum(rf_unsel)
+
+        rf_inv_sel = 1.0 - self.scores[selected_features]
+        prob_to_remove = rf_inv_sel/np.sum(rf_inv_sel)
+
+        no_iteration = 0
+        best_ind = None
+
+        new_length = np.random.randint(1, max_length)
+        while no_iteration < WorldPara.LENGTH_ITERATIONS:
+            # generating new positions
+            new_pos = np.copy(sol)
+            if new_length > len(selected_features):
+                add_fea = np.random.choice(unselected_features, size=new_length-len(selected_features), p=prob_to_add)
+                new_pos[add_fea] = 1.0
+            else:
+                rm_fea = np.random.choice(selected_features, size=len(selected_features)-new_length, p=prob_to_remove)
+                new_pos[rm_fea] = 0.0
+
+            if best_ind is None:
+                best_ind = new_pos
+            else:
+                if self.surrogate_check(new_pos, best_ind) == 1:
+                    best_ind = new_pos
+
+            no_iteration += 1
+
+        return best_ind
+
+    def update_length_fix(self, length):
+        """
+        Update the sol with the given length, randomly
+        :return: new solution
+        """
+        assert length > 0
+        prob = self.scores / np.sum(self.scores)
+        no_iteration = 0
+        best_ind = None
+
+        while no_iteration < WorldPara.LENGTH_ITERATIONS:
+            # generating new positions
+            sel_fea = np.random.choice(np.arange(self.no_features), size=length, replace=False, p=prob)
+            new_pos = np.zeros(self.no_features, dtype=float)
+            new_pos[sel_fea] = 1.0
+
+            if best_ind is None:
+                best_ind = new_pos
+            else:
+                if self.surrogate_check(new_pos, best_ind) == 1:
+                    best_ind = new_pos
+            no_iteration += 1
+
+        return best_ind
 
     def surrogate_check(self, sol1, sol2):
         """

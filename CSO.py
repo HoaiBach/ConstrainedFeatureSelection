@@ -149,9 +149,11 @@ class CSO:
                         for learn_idx, master_idx in zip([idx1, idx2], fea_sols):
                             r1 = np.random.rand(dim)
                             r2 = np.random.rand(dim)
+                            r3 = np.random.rand(dim)
+                            # r3 = 1
                             x_ave = np.average(pop_positions[neighbors[learn_idx]], axis=0)
                             vel = r1 * pop_vels[learn_idx] + r2 * (pop_positions[master_idx] - pop_positions[learn_idx]
-                                                                   ) + self.phi * (x_ave - pop_positions[learn_idx])
+                                                                   ) + self.phi * r3 * (x_ave - pop_positions[learn_idx])
                             new_pos = pop_positions[learn_idx] + vel
                             new_pos[new_pos > self.max_pos] = self.max_pos
                             new_pos[new_pos < self.min_pos] = self.min_pos
@@ -185,9 +187,11 @@ class CSO:
                         # update loser
                         r1 = np.random.rand(dim)
                         r2 = np.random.rand(dim)
+                        r3 = np.random.rand(dim)
+                        # r3 = 1
                         x_ave = np.average(pop_positions[neighbors[loser_idx]], axis=0)
                         vel = r1 * pop_vels[loser_idx] + r2 * (pop_positions[winner_idx] - pop_positions[loser_idx]) \
-                              + self.phi * (x_ave - pop_positions[loser_idx])
+                              + self.phi * r3 * (x_ave - pop_positions[loser_idx])
                         new_pos = pop_positions[loser_idx] + vel
                         new_pos[new_pos > self.max_pos] = self.max_pos
                         new_pos[new_pos < self.min_pos] = self.min_pos
@@ -214,9 +218,12 @@ class CSO:
                     # update loser
                     r1 = np.random.rand(dim)
                     r2 = np.random.rand(dim)
+                    r3 = np.random.rand(dim)
+                    # r3 = 1
+
                     x_ave = np.average(pop_positions[neighbors[loser_idx]], axis=0)
                     vel = r1 * pop_vels[loser_idx] + r2 * (pop_positions[winner_idx] - pop_positions[loser_idx]) \
-                          + self.phi * (x_ave - pop_positions[loser_idx])
+                          + self.phi * r3 * (x_ave - pop_positions[loser_idx])
                     new_pos = pop_positions[loser_idx] + vel
                     new_pos[new_pos > self.max_pos] = self.max_pos
                     new_pos[new_pos < self.min_pos] = self.min_pos
@@ -251,7 +258,9 @@ class CSO:
                 self.problem.surrogate_build(self.data_surrogate)
 
             # Perform local search if stuck more than the threshold and the best position is not updated
-            if WorldPara.LOCAL_SEARCH and stuck_for >= WorldPara.STUCK_THRESHOLD and (not best_updated):
+            if WorldPara.LOCAL_SEARCH \
+                    and WorldPara.LOCAL_STUCK_THRESHOLD <= stuck_for \
+                    and (not best_updated):
                 top_indices = np.argsort(pop_fit)[:int(WorldPara.TOP_POP_RATE * self.pop_size)]
 
                 top_mutants = []
@@ -264,20 +273,60 @@ class CSO:
                         to_evaluate_mutants.append(top_idx)
 
                 top_mutants_fit_errs = self.evaluate_pop_loocv(top_mutants)
-                good_search = 0
+
                 for mutant_idx, (fit, err), mutant in zip(to_evaluate_mutants, top_mutants_fit_errs, top_mutants):
                     if not self.problem.is_better(pop_fit[mutant_idx], fit):
                         pop_positions[mutant_idx] = mutant
                         pop_fit[mutant_idx] = fit
                         pop_err[mutant_idx] = err
-                        good_search += 1
                         # update best if necessary
                         if self.problem.is_better(pop_fit[mutant_idx], best_fit):
                             best_sol = np.copy(pop_positions[mutant_idx])
                             best_fit = pop_fit[mutant_idx]
                             best_err = pop_err[mutant_idx]
                             best_updated = True
-                print(good_search)
+
+            if WorldPara.LENGTH_UPDATE and stuck_for >= WorldPara.LENGTH_STUCK_THRESHOLD and (not best_updated):
+                max_length = len(self.problem.position_2_solution(best_sol)[0])
+                # import time
+                # start = time.time()
+                new_pop = [self.problem.update_length(ind, max_length) for ind in pop_positions]
+                new_pop = np.array(new_pop)
+                # print('v1 takes: %f' %(time.time()-start))
+
+                # new_pop = []
+                # idx = 1
+                # while True:
+                #     count_down = self.pop_size//10
+                #     while count_down > 0:
+                #         length = int(max_length*idx/10)
+                #         if length <= 0:
+                #             length = 1
+                #         new_pop.append(self.problem.update_length_fix(length))
+                #         count_down -= 1
+                #         if len(new_pop) == self.pop_size:
+                #             break
+                #     if len(new_pop) == self.pop_size:
+                #         break
+                #     idx = idx+1
+                # new_pop = np.array(new_pop)
+                # np.random.shuffle(new_pop)
+
+                # now update the population
+                pop_positions = new_pop
+                pop_vels = np.zeros((self.pop_size, dim))
+                new_fit_err = self.evaluate_pop_loocv(pop_positions)
+                pop_fit = np.zeros(len(pop_positions), dtype=float)
+                pop_err = np.zeros(len(pop_positions), dtype=float)
+                for idx, (fit, err) in enumerate(new_fit_err):
+                    pop_fit[idx] = fit
+                    pop_err[idx] = err
+                    if not (self.problem.is_better(best_fit, fit)):
+                        best_sol = np.copy(pop_positions[idx])
+                        best_fit = fit
+                        best_err = err
+                best_updated = True
+                # self.cond_constrain = np.median(pop_fit)
 
             # Update the stuck iterations
             if best_updated:

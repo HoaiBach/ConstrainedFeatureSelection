@@ -41,6 +41,14 @@ if __name__ == '__main__':
     else:
         raise Exception('%s local mode is not implemented!' % sys.argv[7])
 
+    # Parameter for length change
+    if sys.argv[8] == 'change':
+        WorldPara.LENGTH_UPDATE = True
+    elif sys.argv[8] == 'not-change':
+        WorldPara.LENGTH_UPDATE = False
+    else:
+        raise Exception('%s length change is not implemented!' % sys.argv[8])
+
     seed = 1617 * run
     np.random.seed(seed)
     random.seed(seed)
@@ -51,9 +59,12 @@ if __name__ == '__main__':
     if WorldPara.CONSTRAIN_MODE == 'single':
         to_print += '\tConstrain type: %s\n' % str(WorldPara.CONSTRAIN_TYPE)
     to_print += 'Local search: %s\n' % str(WorldPara.LOCAL_SEARCH)
-    to_print += '\tStuck Threshold: %d\n' % WorldPara.STUCK_THRESHOLD
+    to_print += '\tStuck Threshold: %d\n' % WorldPara.LOCAL_STUCK_THRESHOLD
     to_print += '\tLocal search iterations: %d\n' % WorldPara.LOCAL_ITERATIONS
-    to_print += '\tProportion of population: %f\n' %WorldPara.TOP_POP_RATE
+    to_print += '\tProportion of population: %f\n' % WorldPara.TOP_POP_RATE
+    to_print += 'Length change: %s\n' % str(WorldPara.LENGTH_UPDATE)
+    to_print += '\tLength Stuck Threshold: %d\n' % WorldPara.LENGTH_STUCK_THRESHOLD
+    to_print += '\tLength search iterations: %d\n' % WorldPara.LENGTH_ITERATIONS
 
     full_test_accs = []
     sel_accs = []
