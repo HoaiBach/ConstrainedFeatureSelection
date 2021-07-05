@@ -8,21 +8,8 @@ Description:
 
 import numpy as np
 from Utility import DataHandle
-from ExtractResults import nonparametric_tests as nontest
-
-def draw_ep(m_eps: dict, title, dir):
-    import matplotlib.pyplot as plt
-    colors = ['r', 'g', 'b', 'k']
-    markers = ['o', 'v', '2', '*']
-
-    for ep, c, m in zip(m_eps.values(), colors, markers):
-        plt.plot(list(ep.keys()), list(ep.values()), color=c, marker=m)
-    plt.xlabel('# evaluations')
-    plt.ylabel('Fitness')
-    plt.title(title)
-    plt.legend(m_eps.keys())
-    plt.savefig('%s%s.pdf' % (dir, title), bbox_inches='tight')
-    plt.close()
+from ProcessResults import nonparametric_tests as nontest
+from ProcessResults import tables
 
 
 datasets = ['Vehicle', 'ImageSegmentation', 'WallRobot', 'German', 'WBCD', 'GuesterPhase',
@@ -36,20 +23,27 @@ datasets = ['Vehicle', 'ImageSegmentation', 'WallRobot', 'German', 'WBCD', 'Gues
             'ALLAML', 'Leukemia', 'CNS', 'nci9', 'arcene', 'pixraw10P', 'orlraws10P',
             'Leukemia2', 'Leukemia1', 'USPS', 'Gisette']
 
-datasets = ['Vehicle', 'Spect', 'WallRobot', 'German', 'GuesterPhase', 'Ionosphere', 'Chess', 'Movementlibras',
+datasets = ['Vehicle', 'WallRobot', 'German', 'GuesterPhase', 'Ionosphere', 'Chess', 'Movementlibras',
             'Hillvalley', 'Musk1', 'Madelon', 'Isolet', 'MultipleFeatures', 'Gametes', 'QsarAndrogenReceptor',
             'QsarOralToxicity', 'COIL20', 'ORL', 'Bioresponse', 'RELATHE', 'BASEHOCK', 'Brain1', 'GLIOMA', 'USPS',
             'Gisette']
+# datasets = ['Gisette']
 runs = 35
-datasets = ['Vehicle']
+include_full = False
 
-methods = ['SBPSO', 'VLPSO', 'PSOEMT', 'constrained-single-fit-local-change-n']
-short_methods = ['SBPSO', 'VLPSO', 'PSOEMT', 'CCSO']
+methods = ['CFS1', 'mRMR1', 'reliefF1', 'RFS1', 'GFS1', 'SDFS1', 'TKFS1',  'constrained-single-fit-local-change-n']
+short_methods = ['CFS', 'mRMR', 'reliefF', 'RFS', 'GFS', 'SDFS', 'TKFS', 'CCSO']
+if include_full:
+    benchmarks = ['Full'].extend(short_methods[:len(short_methods)-1])
+else:
+    benchmarks = short_methods[:len(short_methods)-1]
+master = 'CCSO'
+combine = np.append(benchmarks, master)
 
-in_dir = '/vol/grid-solar/sgeusers/nguyenhoai2/Works/ConstrainedFeatureSelection/Results/Constrain/K=3/'
-out_dir = '/ExtractResults/EP/Constrain/'
-to_print_acc = 'Dataset\tFull\t' + '\t'.join(short_methods) + '\n'
-to_print_ratio = 'Dataset\t' + '\t'.join(short_methods) + '\n'
+
+in_dir = '/Volumes/Data/Work/Research/CurrentResearch/PycharmProjects/CCSO_RawResults/K=3/'
+out_dir = '/Volumes/Data/Work/Research/CurrentResearch/PycharmProjects/ConstrainedFeatureSelection/ProcessResults/'
+data_dir = '/Volumes/Data/Work/Research/CurrentResearch/Datasets/'
 
 stand_eval = np.array([])
 i = 100
@@ -60,14 +54,13 @@ while i <= 10000:
 data2method2acc = dict()
 data2method2size = dict()
 data2info = dict()
-include_full = True
 
 for dataset in datasets:
     method2acc = dict()
     method2size = dict()
 
     # load data info
-    folds = DataHandle.load_data('/vol/grid-solar/sgeusers/nguyenhoai2/Dataset/', dataset)
+    folds = DataHandle.load_data(data_dir, dataset)
     X_train, X_test, y_train, y_test = folds[0]
     X = np.append(X_train, X_test, axis=0)
     y = np.append(y_train, y_test)
@@ -75,7 +68,7 @@ for dataset in datasets:
     noClasses = np.unique(y).size
     data2info[dataset] = (noFeatures, noInstances, noClasses)
     if include_full:
-        method2size[dataset] = noFeatures
+        method2size['Full'] = np.array([noFeatures]*runs)
 
     in_dir_data = in_dir + dataset + '/'
 
@@ -90,10 +83,8 @@ for dataset in datasets:
                 lines = f.readlines()
                 for l_idx, line in enumerate(lines):
                     if line.startswith('Average selected acc'):
-                        acc_str = line.split(': ')[1]
-                        if acc_str.isdigit():
-                            acc = float(line.split(': ')[1])
-                        else:
+                        acc = float(line.split(': ')[1])
+                        if np.isnan(acc):
                             acc = 0
                         accs = np.append(accs, acc)
                     elif line.startswith('Average full acc'):
@@ -104,33 +95,39 @@ for dataset in datasets:
                         size = int(ratio*noFeatures)
                         sizes = np.append(sizes, size)
             except IOError:
+                accs = np.append(accs, 0.0)
+                sizes = np.append(sizes, 0)
                 print(in_dir_data + method + '/' + str(run + 1) + '.txt is not available.')
 
             if len(sizes) == 0:
                 sizes = np.zeros(runs)
+            if len(accs) == 0:
+                accs = np.zeros(runs)
 
         method2acc[short_method] = accs
         method2size[short_method] = sizes
         if len(full_accs) > 0 and \
-                not(short_method in method2acc.keys()) and include_full:
+                not('Full' in method2acc.keys()) and include_full:
             method2acc['Full'] = full_accs
 
+        data2method2acc[dataset] = method2acc
+        data2method2size[dataset] = method2size
+
 # Friedman test table vs traditional
-benchmarks = ['SBPSO', 'VLPSO', 'PSOEMT']
-master = ['CCSO']
+
 friedman_results = []
 wdl_scores = [[0.0, 0.0, 0.0] for _ in range(len(benchmarks))]
-rank_methods = np.array([0.0]*(len(benchmarks)+1))
+ranks = np.array([0.0] * (len(combine)))
 
 for dataset_idx, dataset in enumerate(datasets):
     results = []
     method2acc = data2method2acc.get(dataset)
-    for method in benchmarks + master:
-        results.append(1.0 - np.array(method2acc(method)))
+    for method in combine:
+        results.append(1.0 - np.array(method2acc.get(method)))
     _, _, rank, pivots = nontest.friedman_test(*results)
-    rank_methods = rank_methods+np.array(rank)
-    pivots_dict = {key: pivots[i] for i, key in enumerate(benchmarks+master)}
-    compares, _, _, pvalues = nontest. holm_test(pivots_dict, control=master[0])
+    ranks = ranks + np.array(rank)
+    pivots_dict = {key: pivots[i] for i, key in enumerate(combine)}
+    compares, _, _, pvalues = nontest. holm_test(pivots_dict, control=master)
 
     pvalues_tmp = [-1.0]*len(benchmarks)
     for compare, pvalue in zip(compares, pvalues):
@@ -142,7 +139,7 @@ for dataset_idx, dataset in enumerate(datasets):
     compare_result = [dataset]
     for ben_idx, ben in enumerate(benchmarks):
         if pvalues[ben_idx] < 0.05:
-            compare_result.append(round(rank[ben_idx], 2)+'*')
+            compare_result.append(str(round(rank[ben_idx], 2)) + '*')
             if rank[ben_idx] > rank[len(benchmarks)]:
                 wdl_scores[ben_idx][0] = wdl_scores[ben_idx][0]+1
             else:
@@ -154,4 +151,68 @@ for dataset_idx, dataset in enumerate(datasets):
     compare_result.append(round(rank[len(benchmarks)], 2))
 
     friedman_results.append(compare_result)
-print('test')
+
+ranks = ranks / len(datasets)
+
+# write to table
+header = ['Dataset']
+header.extend(combine)
+data_nf = [header]
+data_acc = [header]
+
+for dataset in datasets:
+    row_nf = [dataset]
+    row_acc = [dataset]
+
+    methods_nf = data2method2size.get(dataset)
+    methods_acc = data2method2acc.get(dataset)
+
+    for short_method in combine:
+        row_nf.append(round(np.mean(methods_nf.get(short_method)), 2))
+        row_acc.append(round(np.mean(methods_acc.get(short_method))*100, 2))
+
+    data_nf.append(row_nf)
+    data_acc.append(row_acc)
+
+test_row = ['Test']
+for idx, benchmarks in enumerate(benchmarks):
+    wdl = wdl_scores[idx]
+    test_row.append('/'.join([str(ele) for ele in wdl]))
+test_row.append('N/A')
+data_acc.append(test_row)
+
+rank_row = ['Rank']
+for rank in ranks:
+    rank_row.append(str(round(rank, 2)))
+data_acc.append(rank_row)
+
+out_file = open(out_dir+'Latex/Output.txt', 'w')
+
+tabular = tables.Tabular(data_nf)
+table = tables.Table(tabular)
+table.set_caption('Number of selected features')
+table.set_label('tb:nf')
+out_file.write(table.as_tex())
+
+tabular = tables.Tabular(data_acc)
+table = tables.Table(tabular)
+table.set_caption('Testing accuracies')
+table.set_label('tb:acc')
+out_file.write(table.as_tex()+'\n\n')
+
+out_file.close()
+
+
+def draw_ep(m_eps: dict, title, dir):
+    import matplotlib.pyplot as plt
+    colors = ['r', 'g', 'b', 'k']
+    markers = ['o', 'v', '2', '*']
+
+    for ep, c, m in zip(m_eps.values(), colors, markers):
+        plt.plot(list(ep.keys()), list(ep.values()), color=c, marker=m)
+    plt.xlabel('# evaluations')
+    plt.ylabel('Fitness')
+    plt.title(title)
+    plt.legend(m_eps.keys())
+    plt.savefig('%s%s.pdf' % (dir, title), bbox_inches='tight')
+    plt.close()

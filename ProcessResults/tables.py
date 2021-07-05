@@ -35,8 +35,8 @@ import warnings
 import numpy as np
 
 # Local packages
-from extract_results.formatting import *
-from extract_results.operators import *
+from ProcessResults import formatting
+from ProcessResults import operators
 
 def version():
     print(__version__)
