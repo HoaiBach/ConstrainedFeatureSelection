@@ -20,7 +20,7 @@ def drawLineGraphs(data: dict, caption: str, out_dir: str, x_label: str, y_label
     plt.yticks(fontsize='15')
     plt.title(caption, fontweight='bold', fontsize='25')
 
-    colors = ['blue', 'green', 'red', 'cyan', 'magenta', 'yellow', 'black']
+    colors = ['blue', 'red', 'green', 'cyan', 'magenta', 'yellow', 'black']
     markers = ["o", "v", "s", "*", "X", "D", "2"]
 
     items = data.items()
@@ -28,7 +28,7 @@ def drawLineGraphs(data: dict, caption: str, out_dir: str, x_label: str, y_label
         cat, xydata = item
         # plt.plot(xydata.keys(), xydata.values(), markers[idx], markersize=12, linestyle='solid', color=colors[idx],
         #          linewidth=4, label=cat)
-        plt.plot(xydata.keys(), xydata.values(), linestyle='solid', color=colors[idx],
+        plt.plot(list(xydata.keys()), list(xydata.values()), linestyle='solid', color=colors[idx],
                  linewidth=4, label=cat)
 
     plt.legend(fontsize='20')
