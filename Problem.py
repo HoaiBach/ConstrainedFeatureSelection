@@ -166,7 +166,7 @@ class FeatureSelection(Problem):
         rf_unsel = self.scores[unselected_features]
         p0to1_rf = p0to1 * len(unselected_features) / np.sum(rf_unsel) * rf_unsel
 
-        p1to0 = 10.0 / len(sol)
+        p1to0 = WorldPara.LOCAL_ASYM_FLIP / len(sol)
         rf_inv_sel = 1.0 - self.scores[selected_features]
         p1to0_rf_inv = p1to0 * len(selected_features) / np.sum(rf_inv_sel) * rf_inv_sel
 
@@ -183,6 +183,28 @@ class FeatureSelection(Problem):
                     # flip from unselected to selected
                     new_pos[fea] = self.threshold + (self.threshold - sol[fea]) * (
                                 1.0 - self.threshold) / self.threshold
+
+            if self.surrogate_check(new_pos, sol) == 1:
+                return new_pos, True
+
+            no_iteration += 1
+
+        return sol, False
+
+    def local_search_std(self, sol):
+        flip_prob = 1.0/len(sol)
+
+        no_iteration = 0
+        while no_iteration < WorldPara.LOCAL_ITERATIONS:
+            new_pos = np.copy(sol)
+            for idx in np.arange(len(sol)):
+                val = sol[idx]
+                if np.random.rand() < flip_prob:
+                    if val <= self.threshold:
+                        new_val = self.threshold + (self.threshold - val) * (1.0 - self.threshold) / self.threshold
+                    else:
+                        new_val = self.threshold - (val - self.threshold) * self.threshold / (1.0 - self.threshold)
+                    new_pos[idx] = new_val
 
             if self.surrogate_check(new_pos, sol) == 1:
                 return new_pos, True

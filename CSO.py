@@ -267,7 +267,12 @@ class CSO:
                 to_evaluate_mutants = []
 
                 for top_idx in top_indices:
-                    mutant, success = self.problem.local_search(pop_positions[top_idx])
+                    if WorldPara.LOCAL_TYPE == 'asym':
+                        mutant, success = self.problem.local_search(pop_positions[top_idx])
+                    elif WorldPara.LOCAL_TYPE == 'std':
+                        mutant, success = self.problem.local_search_std(pop_positions[top_idx])
+                    else:
+                        raise Exception('Local search %s is not implemented!!' %WorldPara.LOCAL_TYPE)
                     if success:
                         top_mutants.append(mutant)
                         to_evaluate_mutants.append(top_idx)

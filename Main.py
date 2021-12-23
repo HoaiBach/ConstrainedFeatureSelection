@@ -36,6 +36,14 @@ if __name__ == '__main__':
     # Parameter for local search
     if sys.argv[7].startswith('local'):
         WorldPara.LOCAL_SEARCH = True
+        splits = sys.argv[7].split('-')
+        if splits[1] == 'asym':
+            WorldPara.LOCAL_TYPE = 'asym'
+            WorldPara.LOCAL_ASYM_FLIP = int(splits[2])
+        elif splits[1] == 'std':
+            WorldPara.LOCAL_TYPE = 'std'
+        else:
+            raise Exception('Local search %s is not implemented!' % WorldPara.LOCAL_TYPE)
     elif sys.argv[7].startswith('not-local'):
         WorldPara.LOCAL_SEARCH = False
     else:
@@ -62,6 +70,9 @@ if __name__ == '__main__':
     to_print += '\tStuck Threshold: %d\n' % WorldPara.LOCAL_STUCK_THRESHOLD
     to_print += '\tLocal search iterations: %d\n' % WorldPara.LOCAL_ITERATIONS
     to_print += '\tProportion of population: %f\n' % WorldPara.TOP_POP_RATE
+    to_print += '\tLocal search type: %s\n' % WorldPara.LOCAL_TYPE
+    if WorldPara.LOCAL_SEARCH == 'local' and WorldPara.LOCAL_TYPE == 'asym':
+        to_print += '\tLocal search flip: %d\n' % WorldPara.LOCAL_ASYM_FLIP
     to_print += 'Length change: %s\n' % str(WorldPara.LENGTH_UPDATE)
     to_print += '\tLength Stuck Threshold: %d\n' % WorldPara.LENGTH_STUCK_THRESHOLD
     to_print += '\tLength search iterations: %d\n' % WorldPara.LENGTH_ITERATIONS
