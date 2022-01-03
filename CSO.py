@@ -128,10 +128,15 @@ class CSO:
             for idx1, idx2 in zip(indices_pool[0::2], indices_pool[1::2]):
 
                 # update the data to train surrogate
-                if WorldPara.LOCAL_SEARCH:
+                if WorldPara.LOCAL_SEARCH or WorldPara.LENGTH_UPDATE:
                     sol1, fit1 = pop_positions[idx1], pop_fit[idx1]
                     sol2, fit2 = pop_positions[idx2], pop_fit[idx2]
-                    instance = self.problem.surrogate_prep_ins(sol1, fit1, sol2, fit2)
+                    if WorldPara.SURROGATE_VERSION == 'std':
+                        instance = self.problem.surrogate_prep_ins(sol1, fit1, sol2, fit2)
+                    elif WorldPara.SURROGATE_VERSION == 'sel':
+                        instance = self.problem.surrogate_prep_ins_v2(sol1, fit1, sol2, fit2)
+                    else:
+                        raise Exception('Surrogate version %s is not implemented!!' % WorldPara.SURROGATE_VERSION)
                     self.data_surrogate.append(instance)
 
                 if not self.check_feasible(pop_fit[idx1], pop_err[idx1]):
@@ -254,7 +259,8 @@ class CSO:
                     best_updated = True
 
             # update the surrogate model every 40 iterations
-            if WorldPara.LOCAL_SEARCH and iteration % WorldPara.UPDATE_DURATION == 0:
+            if (WorldPara.LOCAL_SEARCH or WorldPara.LENGTH_UPDATE) \
+                    and iteration % WorldPara.SURROGATE_UPDATE_DURATION == 0:
                 self.problem.surrogate_build(self.data_surrogate)
 
             # Perform local search if stuck more than the threshold and the best position is not updated

@@ -26,7 +26,7 @@ if __name__ == '__main__':
             to_write = ''
             accs = []
             try:
-                f = open(in_dir+'1.txt', 'r')
+                f = open(in_dir+'1-std.txt', 'r')
                 lines = f.readlines()
                 for l_idx, line in enumerate(lines):
                     if 'Fold' in line:

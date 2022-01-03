@@ -5,6 +5,8 @@ from sklearn.model_selection import StratifiedKFold as SKF, KFold
 from Utility import Helpers
 import WorldPara
 from skfeature.function.similarity_based.reliefF import reliefF
+from skfeature.function.similarity_based.fisher_score import fisher_score
+import skfeature.utility.entropy_estimators as EEs
 from sklearn.svm import LinearSVC as SVC
 
 
@@ -35,6 +37,96 @@ class Problem(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def position_2_solution(self, pos):
+        pass
+
+
+class MIRFFeatureSelection(Problem):
+
+    def __init__(self, X, y, classifier, init_style, beta=0.3, p=1.0/4):
+        Problem.__init__(self, minimized=True)
+        self.X = X
+        self.y = y
+        self.no_instances, self.no_features = self.X.shape
+        self.threshold = 0.5
+        self.dim = self.no_features
+        self.clf = classifier
+        self.init_style = init_style
+        self.beta = beta
+        self.p = p
+
+        # calculate individual feature scores
+        self.NI = np.array([EEs.mi(np.reshape(self.X[:, f], (self.no_instances, 1)),
+                                   np.reshape(self.y, (self.no_instances, 1))) for f in np.arange(self.dim)])
+        self.NI = (self.NI - np.min(self.NI))/(np.max(self.NI) - np.min(self.NI))
+        self.NI = self.NI/np.sqrt(np.sum(self.NI**2))
+
+        # Relief order
+        order = reliefF(self.X, self.y, mode='rank')
+        self.NROrder = np.array([-1]*self.dim)
+        for r_idx, f_idx in enumerate(order):
+            self.NROrder[f_idx] = r_idx+1
+        assert np.min(self.NROrder) == 1
+        assert np.max(self.NROrder) == self.dim
+        self.NROrder = self.NROrder/(self.p * np.sum(self.NROrder**2))
+
+        # Fisher_score order
+        order = fisher_score(self.X, self.y, mode='index')
+        self.FIOrder = np.array([-1]*self.dim)
+        for r_idx, f_idx in enumerate(order):
+            self.FIOrder[f_idx] = r_idx+1
+        assert np.min(self.FIOrder) == 1
+        assert np.max(self.FIOrder) == self.dim
+        self.FIOrder = self.FIOrder/(self.p * np.sum(self.FIOrder**2))
+
+    def init_pop(self, pop_size):
+        if self.init_style == 'Bing':
+            large_size = pop_size // 3
+            small_size = pop_size - large_size
+            pop = []
+
+            for _ in range(small_size):
+                no_sel = np.random.randint(1, self.no_features // 10 + 1)
+                sel_fea = np.random.choice(range(0, self.no_features), size=no_sel, replace=False)
+                ind = np.zeros(self.no_features, dtype=float)
+                ind[sel_fea] = 1.0
+                pop.append(ind)
+
+            for _ in range(large_size):
+                no_sel = np.random.randint(self.no_features // 2, self.no_features + 1)
+                sel_fea = np.random.choice(range(0, self.no_features), size=no_sel, replace=False)
+                ind = np.zeros(self.no_features, dtype=float)
+                ind[sel_fea] = 1.0
+                pop.append(ind)
+
+            pop = np.array(pop)
+            np.random.shuffle(pop)
+        else:
+            pop = np.random.rand(pop_size, self.no_features)
+
+        return pop
+
+    def position_2_solution(self, pos):
+        assert len(pos) == self.dim
+        assert not np.any(pos < 0.0)
+        assert not np.any(pos > 1.0)
+
+        selected_features = np.where(pos > self.threshold)[0]
+        unselected_features = np.where(pos <= self.threshold)[0]
+
+        return selected_features, unselected_features
+
+    def fitness(self, sol):
+        selected_features, unselected_features = self.position_2_solution(sol)
+        error = -1.0
+        if len(selected_features) == 0:
+            fitness = self.worst_fitness()
+        else:
+            fitness = -np.sum(self.NI[selected_features]) + \
+                      self.beta*(np.sum(self.NROrder[selected_features])+np.sum(self.FIOrder[selected_features]))
+
+        return fitness, error
+
+    def fitness_parallel(self, sol_list):
         pass
 
 
@@ -113,6 +205,8 @@ class FeatureSelection(Problem):
 
     def position_2_solution(self, pos):
         assert len(pos) == self.dim
+        assert not np.any(pos < 0.0)
+        assert not np.any(pos > 1.0)
 
         selected_features = np.where(pos > self.threshold)[0]
         unselected_features = np.where(pos <= self.threshold)[0]
@@ -313,6 +407,10 @@ class FeatureSelection(Problem):
         """
         Prepare instance to train the surrogate model
         the label of instance is 1 if fit1 is better than fit2, otherwise the label is 0
+        1.0 1.0 -> 0.0
+        1.0 0.0 -> 1.0
+        0.0 1.0 -> -1.0
+        0.0 0.0 -> 0.0
         :param sol1:
         :param sol2:
         :param fit1:
@@ -328,6 +426,42 @@ class FeatureSelection(Problem):
         fea2[sel2] = 1.0
 
         instance = fea1 - fea2
+        if self.is_better(fit1, fit2):
+            label = 1.0
+        else:
+            label = 0.0
+        instance = np.append(instance, label)
+        return instance
+
+    def surrogate_prep_ins_v2(self, sol1, fit1, sol2, fit2):
+        """
+        Prepare instance to train the surrogate model
+        the label of instance is 1 if fit1 is better than fit2, otherwise the label is 0
+        1.0 1.0 -> 2.0
+        1.0 0.0 -> 1.0
+        0.0 1.0 -> -1.0
+        0.0 0.0 -> 0.0
+        :param sol1:
+        :param sol2:
+        :param fit1:
+        :param fit2:
+        :return:
+        """
+        sel1, _ = self.position_2_solution(sol1)
+        fea1 = np.zeros(len(sol1), dtype=float)
+        fea1[sel1] = 1.0
+
+        sel2, _ = self.position_2_solution(sol2)
+        fea2 = np.zeros(len(sol2), dtype=float)
+        fea2[sel2] = 1.0
+
+        instance = np.zeros(len(sol1))
+        for idx in np.arange(len(sol1)):
+            if fea1[idx] == 1.0 and fea2[idx] == 1.0:
+                instance[idx] = 2.0
+            else:
+                instance[idx] = fea1[idx] - fea2[idx]
+
         if self.is_better(fit1, fit2):
             label = 1.0
         else:

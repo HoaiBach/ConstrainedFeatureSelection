@@ -40,8 +40,10 @@ if __name__ == '__main__':
         if splits[1] == 'asym':
             WorldPara.LOCAL_TYPE = 'asym'
             WorldPara.LOCAL_ASYM_FLIP = int(splits[2])
+            WorldPara.LOCAL_STUCK_THRESHOLD = int(splits[3])
         elif splits[1] == 'std':
             WorldPara.LOCAL_TYPE = 'std'
+            WorldPara.LOCAL_STUCK_THRESHOLD = int(splits[2])
         else:
             raise Exception('Local search %s is not implemented!' % WorldPara.LOCAL_TYPE)
     elif sys.argv[7].startswith('not-local'):
@@ -50,12 +52,21 @@ if __name__ == '__main__':
         raise Exception('%s local mode is not implemented!' % sys.argv[7])
 
     # Parameter for length change
-    if sys.argv[8] == 'change':
+    if sys.argv[8].startswith('change'):
         WorldPara.LENGTH_UPDATE = True
+        WorldPara.LENGTH_STUCK_THRESHOLD = int(sys.argv[8].split('-')[1])
     elif sys.argv[8] == 'not-change':
         WorldPara.LENGTH_UPDATE = False
     else:
         raise Exception('%s length change is not implemented!' % sys.argv[8])
+
+    # parameter for surrogate model
+    splits = sys.argv[9].split('-')
+    WorldPara.SURROGATE_VERSION = splits[0]
+    WorldPara.SURROGATE_UPDATE_DURATION = int(splits[1])
+
+    # check constraints
+    assert WorldPara.LOCAL_STUCK_THRESHOLD < WorldPara.LENGTH_STUCK_THRESHOLD
 
     seed = 1617 * run
     np.random.seed(seed)
@@ -71,11 +82,14 @@ if __name__ == '__main__':
     to_print += '\tLocal search iterations: %d\n' % WorldPara.LOCAL_ITERATIONS
     to_print += '\tProportion of population: %f\n' % WorldPara.TOP_POP_RATE
     to_print += '\tLocal search type: %s\n' % WorldPara.LOCAL_TYPE
-    if WorldPara.LOCAL_SEARCH == 'local' and WorldPara.LOCAL_TYPE == 'asym':
+    if WorldPara.LOCAL_SEARCH and WorldPara.LOCAL_TYPE == 'asym':
         to_print += '\tLocal search flip: %d\n' % WorldPara.LOCAL_ASYM_FLIP
     to_print += 'Length change: %s\n' % str(WorldPara.LENGTH_UPDATE)
     to_print += '\tLength Stuck Threshold: %d\n' % WorldPara.LENGTH_STUCK_THRESHOLD
     to_print += '\tLength search iterations: %d\n' % WorldPara.LENGTH_ITERATIONS
+    to_print += 'Surrogate model\n'
+    to_print += '\t Surrogate version: %s\n' % WorldPara.SURROGATE_VERSION
+    to_print += '\t Surrogate update duration: %s\n' % WorldPara.SURROGATE_UPDATE_DURATION
 
     full_test_accs = []
     sel_accs = []

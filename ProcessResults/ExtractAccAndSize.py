@@ -27,23 +27,33 @@ datasets = ['Vehicle', 'WallRobot', 'German', 'GuesterPhase', 'Ionosphere', 'Che
             'Hillvalley', 'Musk1', 'Madelon', 'Isolet', 'MultipleFeatures', 'Gametes', 'QsarAndrogenReceptor',
             'QsarOralToxicity', 'COIL20', 'ORL', 'Bioresponse', 'RELATHE', 'BASEHOCK', 'Brain1', 'GLIOMA', 'USPS',
             'Gisette']
+
+datasets = ['Vehicle', 'WallRobot', 'German', 'GuesterPhase', 'Ionosphere', 'Chess', 'Movementlibras',
+            'Hillvalley', 'Musk1', 'Madelon', 'Isolet', 'MultipleFeatures', 'Gametes', 'QsarAndrogenReceptor',
+            'QsarOralToxicity', 'COIL20', 'ORL', 'Bioresponse', 'RELATHE', 'BASEHOCK', 'Brain1', 'GLIOMA']
+
 # datasets = ['Gisette']
 runs = 35
 include_full = False
 
-methods = ['CFS1', 'mRMR1', 'reliefF1', 'RFS1', 'GFS1', 'SDFS1', 'TKFS1',  'constrained-single-fit-local-change-n']
-short_methods = ['CFS', 'mRMR', 'reliefF', 'RFS', 'GFS', 'SDFS', 'TKFS', 'CCSO']
+# methods = ['CFS1', 'mRMR1', 'reliefF1', 'RFS1', 'GFS1', 'SDFS1', 'TKFS1',  'constrained-single-fit-local-change-n']
+# short_methods = ['CFS', 'mRMR', 'reliefF', 'RFS', 'GFS', 'SDFS', 'TKFS', 'CCSO']
+methods = [
+            'constrained-single-fit-local-asym-18-change-Surstd-10-n',
+           'constrained-single-fit-local-asym-18-change-Surstd-30-n',
+           'constrained-single-fit-local-asym-18-change-Surstd-40-n',
+           'constrained-single-fit-local-asym-18-change-Surstd-20-n',]
+short_methods = ['10', '30', '40', '20']
 if include_full:
     benchmarks = ['Full'].extend(short_methods[:len(short_methods)-1])
 else:
     benchmarks = short_methods[:len(short_methods)-1]
-master = 'CCSO'
+master = '20'
 combine = np.append(benchmarks, master)
 
-
-in_dir = '/Volumes/Data/Work/Research/CurrentResearch/PycharmProjects/CCSO_RawResults/K=3/'
 out_dir = '/Volumes/Data/Work/Research/CurrentResearch/PycharmProjects/ConstrainedFeatureSelection/ProcessResults/'
 data_dir = '/Volumes/Data/Work/Research/CurrentResearch/Datasets/'
+in_dir = '/Volumes/Data/Work/Research/CurrentResearch/PycharmProjects/CCSO_RawResults/Revise/'
 
 stand_eval = np.array([])
 i = 100
