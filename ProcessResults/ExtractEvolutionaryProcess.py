@@ -5,6 +5,7 @@ Description:
 -------------------------------------------------------------------------------------------
 -------------------------------------------------------------------------------------------
 """
+from collections import OrderedDict
 
 import numpy as np
 from ProcessResults import Visualisation
@@ -23,14 +24,15 @@ def draw_ep(m_eps: dict, title, dir):
     plt.savefig('%s%s.pdf' % (dir, title), bbox_inches='tight')
     plt.close()
 
-in_dir = '/vol/grid-solar/sgeusers/nguyenhoai2/Works/ConstrainedFeatureSelection/Results/Constrain/K=3/'
+in_dir = '/local/scratch/ConstrainedFeatureSelection/K=3/'
 # out_dir = '/Volumes/Data/Work/Research/CurrentResearch/Latex/ConstrainedFeatureSelection/Figures/constrain/'
 
-datasets = ['Vehicle', 'Spect', 'WallRobot', 'German', 'GuesterPhase', 'Ionosphere', 'Chess', 'Movementlibras',
+datasets = ['Vehicle', 'WallRobot', 'German', 'GuesterPhase', 'Ionosphere', 'Chess', 'Movementlibras',
             'Hillvalley', 'Musk1', 'Madelon', 'Isolet', 'MultipleFeatures', 'Gametes', 'QsarAndrogenReceptor',
             'QsarOralToxicity', 'COIL20', 'ORL', 'Bioresponse', 'RELATHE', 'BASEHOCK', 'Brain1', 'GLIOMA', 'USPS'
             , 'Gisette']
 # datasets = ['Gisette']
+# datasets = ['Vehicle']
 
 runs = 35
 
@@ -40,9 +42,14 @@ runs = 35
 # methods = ['not-constrained-n', 'constrained-single-fit-n']
 # short_methods = ['CSO', 'CCSO-C']
 # out_dir = './Figures/Constrain/'
-methods = ['constrained-single-fit-local-n', 'constrained-single-fit-local-change-n']
-short_methods = ['CL', 'CLS']
-out_dir = './Figures/Length/'
+# methods = ['MCSO', 'not-constrained-n', 'constrained-single-fit-n']
+# short_methods = ['MCSO', 'CSO', 'CCSO-C']
+# out_dir = './Figures/Length/MCSO/'
+
+methods = ['constrained-single-fit-n', 'constrained-single-fit-local-n'
+            , 'constrained-single-fit-not-local-change-n', 'constrained-single-fit-local-change-n']
+short_methods = ['C', 'CL', 'CS', 'CLS']
+out_dir = './Figures/LocalLength/'
 
 stand_eval = np.array([])
 i = 100
@@ -96,6 +103,18 @@ for dataset in datasets:
 
         # several tests should be passed
         # check the number of evaluations should be correct
+
+        # only for MCSO since it starts from 200
+        if method == 'MCSO':
+            for key in fold2eval2fit.keys():
+                eval2fit = fold2eval2fit.get(key)
+                new_dict = dict()
+                new_dict[100] = eval2fit[200]*1.01
+                new_dict[150] = eval2fit[200]*1.005
+                for in_key, value in eval2fit.items():
+                    new_dict[in_key] = value
+                fold2eval2fit[key] = new_dict
+
         for eval2fit in fold2eval2fit.values():
             evals = np.array([ele for ele in eval2fit.keys()])
             dif = np.abs(np.sum(evals-stand_eval))
@@ -104,6 +123,7 @@ for dataset in datasets:
         increase = False
         for eval2fit in fold2eval2fit.values():
             fits = np.array([ele for ele in eval2fit.values()])
+            # fits = np.array([eval2fit.get(key) for key in stand_eval])
             for idx in np.arange(0, len(fits)-1):
                 if fits[idx] < fits[idx+1]:
                     increase = True

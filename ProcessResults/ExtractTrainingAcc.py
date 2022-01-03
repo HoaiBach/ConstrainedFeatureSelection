@@ -23,8 +23,7 @@ def draw_ep(m_eps: dict, title, dir):
     plt.savefig('%s%s.pdf' % (dir, title), bbox_inches='tight')
     plt.close()
 
-in_dir = '/Volumes/Data/Work/Research/CurrentResearch/PycharmProjects/CCSO_RawResults/K=3/'
-out_dir = '/Volumes/Data/Work/Research/CurrentResearch/Latex/ConstrainedFeatureSelection/Figures/constrain/'
+in_dir = '/local/scratch/ConstrainedFeatureSelection/K=3/'
 
 datasets = ['Vehicle', 'Spect', 'WallRobot', 'German', 'GuesterPhase', 'Ionosphere', 'Chess', 'Movementlibras',
             'Hillvalley', 'Musk1', 'Madelon', 'Isolet', 'MultipleFeatures', 'Gametes', 'QsarAndrogenReceptor',
@@ -39,8 +38,9 @@ runs = 35
 # methods = ['not-constrained-n', 'constrained-single-fit-n']
 # short_methods = ['CSO', 'CCSO']
 # out_dir = './Figures/ConstrainNf/'
-methods = ['not-constrained-n', 'constrained-single-fit-n']
-short_methods = ['CSO', 'CCSO']
+methods = ['constrained-single-fit-n', 'constrained-single-fit-local-n', 'constrained-single-fit-not-local-change-n',
+           'constrained-single-fit-local-change-n']
+short_methods = ['C', 'CL', 'CS', 'CLS']
 out_dir = './Figures/TrainingAcc/'
 
 stand_eval = np.array([])

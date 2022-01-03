@@ -23,7 +23,7 @@ def draw_ep(m_eps: dict, title, dir):
     plt.savefig('%s%s.pdf' % (dir, title), bbox_inches='tight')
     plt.close()
 
-in_dir = '/vol/grid-solar/sgeusers/nguyenhoai2/Works/ConstrainedFeatureSelection/Results/Constrain/K=3/'
+in_dir = '/local/scratch/ConstrainedFeatureSelection/K=3/'
 # out_dir = '/Volumes/Data/Work/Research/CurrentResearch/Latex/ConstrainedFeatureSelection/Figures/constrain/'
 
 datasets = ['Vehicle', 'Spect', 'WallRobot', 'German', 'GuesterPhase', 'Ionosphere', 'Chess', 'Movementlibras',
@@ -39,9 +39,10 @@ runs = 35
 # methods = ['not-constrained-n', 'constrained-single-fit-n']
 # short_methods = ['CSO', 'CCSO']
 # out_dir = './Figures/ConstrainNf/'
-methods = ['not-constrained-n', 'constrained-single-fit-n']
-short_methods = ['CSO', 'CCSO-C']
-out_dir = './Figures/Diversity/'
+methods = ['constrained-single-fit-n', 'constrained-single-fit-local-n'
+            , 'constrained-single-fit-not-local-change-n', 'constrained-single-fit-local-change-n']
+short_methods = ['C', 'CL', 'CS', 'CLS']
+out_dir = './Figures/DiversityAll/'
 
 stand_eval = np.array([])
 i = 100
